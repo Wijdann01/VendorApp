@@ -1,0 +1,9 @@
+.role-management code{font-size:10px;color:#77736b}
+.role-management .admin-table{min-width:620px}
+.admin-sidebar .admin-nav{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#575349 transparent}
+.booking-admin-stats{margin-top:3px}
+.booking-admin-table{min-width:980px}
+.booking-admin-addon{display:block;margin-bottom:7px;font-size:9px}
+.booking-admin-addon small{display:block;color:#858178;margin-top:3px}
+.booking-admin-table .inquiry-message{margin-top:7px}
+@media(max-width:700px){.booking-admin-table{min-width:980px}}

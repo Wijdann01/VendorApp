@@ -1,0 +1,1 @@
+<template><section class="empty-state page-empty"><span class="eyebrow">404 — HALAMAN TIDAK DITEMUKAN</span><h1>Cerita ini belum kami temukan.</h1><p>Mungkin halaman yang Anda cari sudah berpindah.</p><RouterLink class="button button-dark" to="/">Kembali ke beranda</RouterLink></section></template>
