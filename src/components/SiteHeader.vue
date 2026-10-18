@@ -22,7 +22,7 @@ const links = [
     <div class="header-inner">
       <RouterLink to="/" class="brand" aria-label="Abadi nan Jaya, beranda" @click="open = false">
         <img v-if="site.settings.logo_url" class="brand-logo" :src="site.settings.logo_url" :alt="site.settings.brand_name || 'Abadi nan Jaya'">
-        <span v-else class="brand-mark">A<span>J</span></span>
+        <img v-else class="brand-logo" src="/AnJ.svg" alt="">
         <span class="brand-name">{{ site.settings.brand_name || 'Abadi nan Jaya' }}<small>EVENTS · STORIES · CELEBRATIONS</small></span>
       </RouterLink>
       <button class="mobile-menu" type="button" :aria-label="open ? 'Tutup menu' : 'Buka menu'" @click="open = !open">

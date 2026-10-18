@@ -12,7 +12,7 @@ const router = useRouter()
 const site = useSiteStore()
 const { notify } = useToast()
 const form = ref({
-  booking_type: 'personal',
+  booking_type: 'organization',
   name: '',
   email: '',
   phone: '',
@@ -182,12 +182,12 @@ async function submitBooking() {
 </script>
 
 <template>
-  <section class="page-hero booking-page-hero"><div class="container"><span class="eyebrow">BOOKING & KONSULTASI ACARA</span><h1>Rangkai momen Anda,<br>mulai dari sini.</h1><p>Lengkapi rencana acara dan pilihan paket. Tim kami akan menghubungi Anda untuk konfirmasi kebutuhan dan penawaran final.</p><div class="breadcrumb"><RouterLink to="/">Beranda</RouterLink><span>/</span><span>Booking acara</span></div></div></section>
+  <section class="page-hero booking-page-hero"><div class="container"><span class="eyebrow">BOOKING & KONSULTASI ACARA</span><h1>Rencanakan acara sekolah,<br>mulai dari sini.</h1><p>Ceritakan rencana perpisahan, wisuda, atau yearbook sekolah Anda. Kami bantu susun kebutuhan acara dan penawarannya.</p><div class="breadcrumb"><RouterLink to="/">Beranda</RouterLink><span>/</span><span>Booking acara</span></div></div></section>
   <section v-if="submitted" class="section section-paper"><div class="container booking-success"><span class="booking-success-icon"><Check :size="24" /></span><span class="eyebrow">PERMINTAAN BOOKING TERKIRIM</span><h2>Terima kasih sudah berbagi cerita.</h2><p>Tim kami akan meninjau detail acara dan menghubungi Anda untuk konfirmasi paket, ketersediaan tanggal, serta penawaran final. Booking baru terkonfirmasi setelah ada persetujuan tim kami.</p><div class="booking-success-actions"><RouterLink class="button button-dark" to="/layanan">Jelajahi layanan</RouterLink><RouterLink class="text-link" to="/">Kembali ke beranda <ArrowRight :size="15" /></RouterLink></div></div></section>
   <section v-else class="section section-paper"><div class="container booking-layout">
     <form class="booking-form" novalidate @submit.prevent="submitBooking">
       <div class="booking-step-heading"><span>01</span><div><h2>Siapa yang sedang merayakan?</h2><p>Pilih tipe pemesan agar kami menyesuaikan kebutuhan acara.</p></div></div>
-      <div class="booking-type-switch"><button type="button" :class="{ selected: form.booking_type === 'personal' }" @click="form.booking_type = 'personal'"><span class="booking-type-icon">01</span><strong>Personal</strong><small>Wedding, ulang tahun, perayaan keluarga</small></button><button type="button" :class="{ selected: form.booking_type === 'organization' }" @click="form.booking_type = 'organization'"><span class="booking-type-icon">02</span><strong>Instansi / Sekolah</strong><small>Wisuda, gathering, corporate, yearbook</small></button></div>
+      <div class="booking-type-switch"><button type="button" :class="{ selected: form.booking_type === 'organization' }" @click="form.booking_type = 'organization'"><span class="booking-type-icon">01</span><strong>Instansi / Sekolah</strong><small>Perpisahan, wisuda, yearbook, corporate</small></button><button type="button" :class="{ selected: form.booking_type === 'personal' }" @click="form.booking_type = 'personal'"><span class="booking-type-icon">02</span><strong>Personal</strong><small>Wedding, ulang tahun, perayaan keluarga</small></button></div>
       <div class="booking-form-grid">
         <label class="field"><span>{{ form.booking_type === 'organization' ? 'Nama PIC / penanggung jawab *' : 'Nama lengkap *' }}</span><input v-model="form.name" autocomplete="name" placeholder="Nama Anda"><small v-if="errors.name" class="field-error">{{ errors.name }}</small></label>
         <label class="field"><span>Email aktif *</span><input v-model="form.email" type="email" autocomplete="email" placeholder="nama@email.com"><small v-if="errors.email" class="field-error">{{ errors.email }}</small></label>

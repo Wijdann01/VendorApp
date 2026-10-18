@@ -30,13 +30,15 @@ Website katalog layanan event dan wedding dengan dashboard admin. Dibangun mengg
 │   │   └── AdminView.vue
 │   ├── App.vue
 │   ├── main.js
+│   ├── event-theme.css
 │   └── style.css
 ├── supabase/
 │   ├── migrations/
 │   │   ├── 202610160001_initial_schema.sql
 │   │   ├── 202610160002_event_booking_fields.sql
 │   │   ├── 202610160003_role_permissions.sql
-│   │   └── 202610160004_local_image_assets.sql
+│   │   ├── 202610160004_local_image_assets.sql
+│   │   └── 202610160005_school_event_focus.sql
 │   └── seed.sql
 ├── .env.example
 └── vite.config.js
@@ -80,6 +82,8 @@ Seluruh tabel mengaktifkan RLS. Konten publik hanya membaca record yang dipublik
 | Mengubah pengaturan situs | Tidak | Ya |
 | Melihat daftar akun dan mengubah role | Tidak | Ya |
 
+Di menu **Halaman utama**, admin dapat menambahkan bagian konten baru tanpa mengisi kode atau slug. Bagian tambahan otomatis tampil di beranda dan dapat diurutkan, disembunyikan, atau dihapus. Di formulir **Paket & harga**, isi paket dan add-on dikelola lewat baris input dengan tombol tambah/hapus, bukan format array atau teks khusus.
+
 Pembatasan diterapkan di dashboard **dan** RLS/database, jadi menyembunyikan menu bukan satu-satunya kontrol. Editor hanya dapat mengubah status dan catatan inquiry; perubahan kolom booking lain ditolak oleh trigger database. Editor tidak dapat menghapus konten utama. Pengelolaan akun dilakukan di menu **Akun & hak akses** oleh super admin; akun Supabase Auth tetap dibuat/diundang melalui Supabase Dashboard. Sistem mencegah penghapusan atau penurunan role super admin terakhir.
 
 ## Menjalankan lokal
@@ -97,7 +101,7 @@ Tanpa konfigurasi Supabase situs berjalan memakai data demo. Inquiry preview dis
 
 1. Buat proyek Supabase, lalu salin `.env.example` menjadi `.env.local`.
 2. Isi `VITE_SUPABASE_URL` dengan **Project URL dasar** (contoh `https://project-ref.supabase.co`), dan `VITE_SUPABASE_ANON_KEY` dari **Project Settings → API**. Jangan isi URL dengan `/rest/v1` dan jangan pernah menaruh `service_role` key di frontend. Client menghapus akhiran `/rest/v1` jika URL tersebut tidak sengaja ikut disalin.
-3. Jalankan keempat migration dalam urutan nama dan seed melalui Supabase CLI dari direktori proyek:
+3. Jalankan kelima migration dalam urutan nama dan seed melalui Supabase CLI dari direktori proyek:
 
    ```bash
    npx supabase login
@@ -106,14 +110,14 @@ Tanpa konfigurasi Supabase situs berjalan memakai data demo. Inquiry preview dis
    npx supabase db execute --file supabase/seed.sql
    ```
 
-   Migration pertama membuat tabel dan RLS, migration kedua menambahkan detail booking, migration ketiga membatasi hak akses editor/super admin, dan migration keempat mengganti foto contoh di database dengan aset lokal. Untuk menjalankan Supabase lokal dari awal (perintah ini membangun ulang database lokal):
+   Migration pertama membuat tabel dan RLS, migration kedua menambahkan detail booking, migration ketiga membatasi hak akses editor/super admin, migration keempat mengganti foto contoh di database dengan aset lokal, dan migration kelima memprioritaskan acara sekolah/perpisahan pada konten contoh. Migration kelima hanya mengganti teks bawaan yang belum dikustomisasi; urutan layanan dan paket contoh disusun ulang untuk menonjolkan wisuda, yearbook, dan acara sekolah. Untuk menjalankan Supabase lokal dari awal (perintah ini membangun ulang database lokal):
 
    ```bash
    npx supabase start
    npx supabase db reset
    ```
 
-   Jika Supabase CLI belum tersedia, buka SQL Editor dashboard dan jalankan seluruh file di `supabase/migrations/` secara berurutan, kemudian jalankan `supabase/seed.sql`. Pada database existing yang sudah menerapkan migration 001–003, jalankan migration 004 untuk mengganti foto contoh menjadi aset lokal.
+   Jika Supabase CLI belum tersedia, buka SQL Editor dashboard dan jalankan seluruh file di `supabase/migrations/` secara berurutan, kemudian jalankan `supabase/seed.sql`. Pada database existing yang sudah menerapkan migration 001–004, jalankan migration 005 untuk memperbarui urutan dan teks konten bawaan.
 4. Buat akun super admin pertama melalui **Authentication → Users → Add user**. Trigger akan membuat profil dengan role `editor`.
 5. Untuk menjadikan akun pertama sebagai super admin, jalankan SQL berikut di SQL Editor dengan email akun yang Anda buat:
 
@@ -149,6 +153,7 @@ Foto contoh situs disimpan di `public/images/` dan dirujuk menggunakan path loka
 
 - Beranda dengan hero, layanan, paket, portofolio, testimoni, klien, FAQ, dan CTA WhatsApp.
 - Katalog layanan dengan filter kategori dan pencarian; detail paket, isi paket, add-on, konsultasi WhatsApp, dan inquiry.
+- Fokus utama konten adalah acara perpisahan/wisuda sekolah dan yearbook, dengan layanan corporate, komunitas, organizer, produksi, serta wedding tetap tersedia di katalog.
 - Portofolio per kategori dengan lightbox.
 - Daftar harga dapat dicetak/disimpan menjadi PDF dari dialog cetak browser.
 - Kontak person, validasi formulir, status inquiry baru/diproses/selesai, catatan internal, dan ekspor CSV.

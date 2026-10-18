@@ -79,7 +79,13 @@ export const useSiteStore = defineStore('site', () => {
       }))
       sections.value = sections.value.map((section) => ({
         ...section,
-        image_url: keepLocalOrUploaded(section.image_url, localImages[section.section_key === 'about' ? 'about' : 'wedding']),
+        image_url: section.image_url?.startsWith('/') || uploadedStorageUrl(section.image_url)
+          ? section.image_url
+          : section.section_key === 'hero'
+            ? localImages.graduation
+            : section.section_key === 'about'
+              ? localImages.about
+              : '',
       }))
       const { data: siteSettings, error: settingsError } = await supabase.from('site_settings').select('key,value').eq('is_public', true)
       if (settingsError) {

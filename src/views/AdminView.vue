@@ -5,10 +5,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { supabase, supabaseConfigured } from '../lib/supabase'
 import { demoCategories, demoFaqs, demoLandingSections, demoPackages, demoServices, demoTestimonials, formatPrice, localImages } from '../data/demo'
 import { useToast } from '../composables/useToast'
+import { useSiteStore } from '../stores/site'
 
 const route = useRoute()
 const router = useRouter()
 const { notify } = useToast()
+const publicSite = useSiteStore()
 const profile = computed(() => route.meta.profile || {})
 const isLocalDemo = !supabaseConfigured
 const role = computed(() => profile.value.role || (isLocalDemo ? 'super_admin' : 'editor'))
@@ -73,6 +75,7 @@ const setPage = (id) => {
   sidebarOpen.value = false
   editing.value = null
   accountEditing.value = null
+  filterStatus.value = 'semua'
   if (id === 'profiles') loadAdminAccounts()
 }
 
@@ -86,10 +89,10 @@ async function loadDashboard() {
       dataSets.value.services = demoServices
       dataSets.value.categories = demoCategories
       dataSets.value.packages = demoPackages
-      dataSets.value.portfolios = Array.from({ length: 6 }, (_, index) => ({ id: `demo-${index}`, title: ['A Garden Wedding', 'Together, Forward', 'Class of 2025', 'The Art of Gathering', 'Our Little Universe', 'Golden Hour Vows'][index], category: ['Wedding', 'Corporate', 'Graduation', 'Event', 'Yearbook', 'Wedding'][index], image_url: demoServices[index % demoServices.length].image_url, is_published: true }))
+      dataSets.value.portfolios = Array.from({ length: 6 }, (_, index) => ({ id: `demo-${index}`, title: ['Malam Perpisahan Angkatan 2025', 'Yearbook: Our Little Universe', 'Together, Forward', 'The Art of Gathering', 'A Garden Wedding', 'Golden Hour Vows'][index], category: ['Perpisahan & Wisuda', 'Yearbook', 'Event & Corporate', 'Event', 'Wedding', 'Wedding'][index], image_url: demoServices[index % demoServices.length].image_url, is_published: true }))
       dataSets.value.testimonials = demoTestimonials
       dataSets.value.faqs = demoFaqs
-      dataSets.value.contacts = [{ id: 'c1', name: 'Alya Putri', title: 'Wedding Consultant', division: 'Wedding & Personal', is_published: true }, { id: 'c2', name: 'Raka Mahendra', title: 'Event Consultant', division: 'Corporate & School', is_published: true }]
+      dataSets.value.contacts = [{ id: 'c2', name: 'Raka Mahendra', title: 'Konsultan Acara Sekolah', division: 'Sekolah & Event', is_published: true }, { id: 'c1', name: 'Alya Putri', title: 'Wedding Consultant', division: 'Wedding & Personal', is_published: true }]
       dataSets.value.clients = [{ id: 'cl1', name: 'Nusantara Group', is_published: true }, { id: 'cl2', name: 'SMA Cakrawala', is_published: true }]
       dataSets.value.landing_sections = demoLandingSections
       dataSets.value.site_settings = [{ id: 'name', key: 'brand_name', label: 'Nama brand', value: 'Abadi nan Jaya' }, { id: 'whatsapp', key: 'whatsapp', label: 'Nomor WhatsApp', value: '6281234567890' }, { id: 'instagram', key: 'instagram', label: 'Instagram', value: '@abadinanjaya' }]
@@ -196,27 +199,60 @@ function editRow(item) {
   if (imageField && updated[imageField] && !updated[imageField].startsWith('/') && !updated[imageField].includes('.supabase.co/storage/v1/object/public/')) {
     const category = dataSets.value.categories.find((entry) => entry.id === updated.category_id || entry.name === updated.category)
     updated[imageField] = active.value === 'landing_sections'
-      ? localImages[updated.section_key === 'about' ? 'about' : 'wedding']
-      : localImages[category?.slug] || (active.value === 'portfolios' ? localImages.wedding : localImages.production)
+      ? localImages[updated.section_key === 'about' ? 'about' : 'graduation']
+      : localImages[category?.slug] || (active.value === 'portfolios' ? localImages.graduation : localImages.production)
   }
   form.value = updated
 }
 function newRow() {
   clearPendingImages()
   editing.value = 'new'
+  const nextLandingOrder = Math.max(0, ...dataSets.value.landing_sections.map((section) => Number(section.sort_order) || 0)) + 1
   const templates = {
     services: { title: '', slug: '', summary: '', description: '', category_id: '', image_url: localImages.production, featured: false, is_published: false },
     categories: { name: '', slug: '', description: '', icon: '', sort_order: 0, is_published: false },
     packages: { name: '', slug: '', description: '', service_id: '', price: 0, price_label: 'Mulai dari', inclusions: [], addons: [], is_published: false },
-    portfolios: { title: '', slug: '', category: '', category_id: '', description: '', cover_image_url: localImages.wedding, is_published: false },
+    portfolios: { title: '', slug: '', category: '', category_id: '', description: '', cover_image_url: localImages.graduation, is_published: false },
     faqs: { question: '', answer: '', sort_order: 0, is_published: false },
     contacts: { name: '', title: '', division: '', phone: '', email: '', sort_order: 0, is_published: false },
     testimonials: { name: '', role: '', quote: '', avatar_url: '', rating: 5, is_published: false },
     clients: { name: '', logo_url: '', website_url: '', sort_order: 0, is_published: false },
-    landing_sections: { section_key: '', title: '', subtitle: '', body: '', image_url: localImages.wedding, cta_label: '', cta_url: '', is_enabled: true, sort_order: 0 },
+    landing_sections: { section_key: '', title: '', subtitle: '', body: '', image_url: '', cta_label: '', cta_url: '', is_enabled: true, sort_order: nextLandingOrder },
     site_settings: { key: '', value: '' },
   }
   form.value = { ...(templates[active.value] || { name: '' }) }
+}
+function addPackageInclusion() {
+  form.value.inclusions = [...(form.value.inclusions || []), '']
+}
+function removePackageInclusion(index) {
+  form.value.inclusions = form.value.inclusions.filter((_, itemIndex) => itemIndex !== index)
+}
+function addPackageAddon() {
+  form.value.addons = [...(form.value.addons || []), { name: '', price: 0, description: '' }]
+}
+function removePackageAddon(index) {
+  form.value.addons = form.value.addons.filter((_, itemIndex) => itemIndex !== index)
+}
+function syncPublicContent(table) {
+  if (table === 'landing_sections') {
+    publicSite.sections = dataSets.value.landing_sections.filter((section) => section.is_enabled)
+  }
+  if (table === 'packages') {
+    publicSite.packages = dataSets.value.packages
+      .filter((item) => item.is_published)
+      .map((item) => ({ ...item, addons: (item.addons || []).filter((addon) => addon.is_published !== false) }))
+  }
+}
+function createLandingSectionKey(title) {
+  const base = `custom-${slugify(title) || 'bagian-baru'}`
+  const existingKeys = new Set(dataSets.value.landing_sections
+    .filter((section) => section.id !== form.value.id)
+    .map((section) => section.section_key))
+  let key = base
+  let suffix = 2
+  while (existingKeys.has(key)) key = `${base}-${suffix++}`
+  return key
 }
 function slugify(value) {
   return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -280,6 +316,14 @@ async function saveRow() {
     return
   }
   const record = { ...form.value }
+  if (table === 'landing_sections') {
+    if (!record.title?.trim()) {
+      notify('Isi judul bagian halaman utama terlebih dahulu.', 'error')
+      return
+    }
+    if (editing.value === 'new') record.section_key = createLandingSectionKey(record.title)
+    delete record.slug
+  }
   const addonItems = table === 'packages' ? (record.addons || []).map((addon) => {
     if (typeof addon === 'string') {
       const [name, price = '0', description = ''] = addon.split('|')
@@ -287,7 +331,10 @@ async function saveRow() {
     }
     return { name: addon.name?.trim(), price: Number(addon.price) || 0, description: addon.description?.trim() || '' }
   }).filter((addon) => addon.name) : null
-  if (table === 'packages') delete record.addons
+  if (table === 'packages') {
+    delete record.addons
+    record.inclusions = (record.inclusions || []).map((value) => typeof value === 'string' ? value.trim() : '').filter(Boolean)
+  }
   if (Array.isArray(record.inclusions)) record.inclusions = record.inclusions.map((value) => typeof value === 'string' ? value.trim() : value).filter(Boolean)
   if (['services', 'categories', 'packages', 'portfolios'].includes(table) && !record.slug && (record.title || record.name)) {
     record.slug = slugify(record.title || record.name)
@@ -301,6 +348,7 @@ async function saveRow() {
       const list = dataSets.value[active.value] || []
       if (table === 'packages') record.addons = addonItems
       dataSets.value[active.value] = editing.value === 'new' ? [...list, record] : list.map((item) => item.id === record.id ? record : item)
+      syncPublicContent(table)
       editing.value = null
       clearPendingImages()
       notify('Perubahan tersimpan di sesi demo ini. Konfigurasikan Supabase untuk menyimpan secara permanen.')
@@ -339,8 +387,9 @@ async function saveRow() {
     }
     editing.value = null
     clearPendingImages()
-    notify('Perubahan berhasil disimpan.')
     await loadDashboard()
+    syncPublicContent(table)
+    notify('Perubahan berhasil disimpan.')
   } catch (error) {
     notify(`Tidak dapat menyimpan: ${error.message}`, 'error')
   } finally {
@@ -589,7 +638,7 @@ onMounted(loadDashboard)
   <div class="admin-shell" :class="{ 'admin-sidebar-open': sidebarOpen, 'admin-editor': !isSuperAdmin }">
     <button v-if="sidebarOpen" class="sidebar-backdrop" aria-label="Tutup menu" @click="sidebarOpen = false"></button>
     <aside class="admin-sidebar">
-      <RouterLink to="/" class="brand admin-brand"><span class="brand-mark">A<span>J</span></span><span class="brand-name">abadi nan jaya<small>ADMIN STUDIO</small></span></RouterLink>
+      <RouterLink to="/" class="brand admin-brand"><img class="brand-logo" src="/AnJ.svg" alt=""><span class="brand-name">abadi nan jaya<small>ADMIN STUDIO</small></span></RouterLink>
       <div class="workspace-label">WORKSPACE <span>LIVE</span></div>
       <nav class="admin-nav"><button v-for="item in menu" :key="item.id" type="button" :class="{ active: active === item.id }" @click="setPage(item.id)"><component :is="item.icon" :size="17" /><span>{{ item.label }}</span><i v-if="item.id === 'inquiries' && counts.newInquiries">{{ counts.newInquiries }}</i><i v-else-if="item.id === 'bookings' && bookingInquiries.length">{{ bookingInquiries.length }}</i></button></nav>
       <div class="sidebar-bottom"><a class="view-site" href="/" target="_blank" rel="noreferrer"><ArrowUpRight :size="15" /> Lihat situs</a><div class="admin-user"><span class="admin-avatar">{{ (profile.full_name || 'A').charAt(0) }}</span><span class="admin-user-info"><strong>{{ profile.full_name || 'Admin Abadi nan Jaya' }}</strong><small>{{ isLocalDemo ? 'Mode demo' : role.replace('_', ' ') }}</small></span></div><button class="sidebar-logout" type="button" @click="logout"><LogOut :size="15" /> Keluar dari admin</button></div>
@@ -597,7 +646,7 @@ onMounted(loadDashboard)
     <main class="admin-main">
       <header class="admin-topbar"><button class="mobile-menu admin-menu-toggle" aria-label="Buka menu" @click="sidebarOpen = true"><Menu :size="20" /></button><div class="admin-breadcrumb">Workspace <span>/</span> <strong>{{ menu.find((item) => item.id === active)?.label }}</strong></div><div class="admin-top-actions"><span class="admin-status"><i></i> Situs aktif</span><div class="account-menu-wrap"><button class="account-menu-trigger" type="button" :aria-expanded="accountMenuOpen" @click="accountMenuOpen = !accountMenuOpen"><span class="admin-top-avatar">{{ (profile.full_name || 'A').charAt(0) }}</span><ChevronDown :size="14" /></button><div v-if="accountMenuOpen" class="account-menu"><strong>{{ profile.full_name || 'Admin Abadi nan Jaya' }}</strong><small>{{ isLocalDemo ? 'Mode demo' : role.replace('_', ' ') }}</small><button type="button" @click="logout"><LogOut :size="15" /> Keluar dari admin</button></div></div></div></header>
       <div class="admin-content">
-        <div class="admin-page-heading"><div><span class="eyebrow">{{ active === 'dashboard' ? 'RINGKASAN HARI INI' : 'KELOLA KONTEN' }}</span><h1>{{ active === 'dashboard' ? 'Ruang cerita Anda.' : headings[active] }}</h1><p>{{ active === 'dashboard' ? 'Berikut yang terjadi di Abadi nan Jaya.' : `Atur dan perbarui ${headings[active]?.toLowerCase()} tanpa menyentuh kode.` }}</p></div><button v-if="['services','categories','packages','portfolios','faqs','contacts','testimonials','landing_sections','clients','price_list'].includes(active) || (isSuperAdmin && ['site_settings','profiles'].includes(active))" class="button button-dark admin-add" @click="active === 'profiles' ? startNewAccount() : newRow()"><Plus :size="16" /> {{ active === 'profiles' ? 'Tambah akun' : 'Tambah baru' }}</button></div>
+        <div class="admin-page-heading"><div><span class="eyebrow">{{ active === 'dashboard' ? 'RINGKASAN HARI INI' : 'KELOLA KONTEN' }}</span><h1>{{ active === 'dashboard' ? 'Ruang cerita Anda.' : headings[active] }}</h1><p>{{ active === 'dashboard' ? 'Berikut yang terjadi di Abadi nan Jaya.' : `Atur dan perbarui ${headings[active]?.toLowerCase()} tanpa menyentuh kode.` }}</p></div><button v-if="['services','categories','packages','portfolios','faqs','contacts','testimonials','landing_sections','clients','price_list'].includes(active) || (isSuperAdmin && ['site_settings','profiles'].includes(active))" class="button button-dark admin-add" @click="active === 'profiles' ? startNewAccount() : newRow()"><Plus :size="16" /> {{ active === 'profiles' ? 'Tambah akun' : active === 'landing_sections' ? 'Tambah bagian beranda' : active === 'packages' ? 'Tambah paket' : 'Tambah baru' }}</button></div>
         <div v-if="isLocalDemo" class="demo-banner"><span>Mode preview lokal.</span> Data pengelolaan contoh tidak tersimpan permanen. Konfigurasikan Supabase untuk mengaktifkan dashboard penuh.</div>
         <div v-else-if="!isSuperAdmin" class="demo-banner"><span>Akses editor.</span> Anda dapat mengelola konten dan tindak lanjut inquiry. Pengaturan situs, penghapusan konten, serta pengelolaan role hanya tersedia bagi super admin.</div>
         <div v-if="notice" class="admin-error"><span>{{ notice }}</span><button @click="loadDashboard">Coba lagi</button></div>
@@ -663,8 +712,50 @@ onMounted(loadDashboard)
           <section v-if="active === 'portfolios'" class="admin-panel upload-panel"><span class="upload-icon"><FileImage :size="22" /></span><div><strong>Unggah foto atau video portofolio</strong><p>Pilih beberapa file untuk menyimpan foto ke Supabase Storage dan menghubungkannya ke portofolio.</p><label class="button button-dark upload-button">Pilih file<input type="file" accept="image/*,video/*" multiple @change="uploadMedia"></label></div></section>
           <section class="admin-panel table-panel"><div class="table-toolbar"><label class="search-box"><Search :size="16" /><input v-model="query" placeholder="Cari konten..."></label><span class="table-total">{{ currentRows.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase())).length }} item</span><select v-if="['services','packages','portfolios','categories','faqs'].includes(active)" v-model="filterStatus" class="select-control"><option value="semua">Semua status</option><option value="published">Dipublikasikan</option><option value="draft">Draft</option></select></div>
             <div v-if="editing" class="admin-edit-form">
-              <div class="panel-heading"><h2>{{ editing === 'new' ? 'Tambah item' : 'Edit item' }}</h2><button class="icon-button" @click="cancelEdit"><X :size="18" /></button></div>
-              <div class="edit-fields">
+              <div class="panel-heading"><h2>{{ editing === 'new' ? active === 'landing_sections' ? 'Tambah bagian beranda' : active === 'packages' ? 'Tambah paket' : 'Tambah item' : active === 'landing_sections' ? 'Edit bagian beranda' : active === 'packages' ? 'Edit paket' : 'Edit item' }}</h2><button class="icon-button" @click="cancelEdit"><X :size="18" /></button></div>
+              <p v-if="active === 'landing_sections'" class="admin-form-hint">Bagian ini akan muncul di beranda. Nama bagian dibuat otomatis—Anda tidak perlu mengisi kode atau slug.</p>
+              <p v-else-if="active === 'packages'" class="admin-form-hint">Isi detail paket. Untuk menambahkan beberapa item atau add-on, gunakan tombol tambah di bagian masing-masing.</p>
+              <div v-if="active === 'packages'" class="edit-fields">
+                <label class="field"><span>Nama paket</span><input v-model.trim="form.name" type="text" required placeholder="Contoh: Paket Perpisahan Sekolah"></label>
+                <label class="field"><span>Layanan</span><select v-model="form.service_id" required><option value="">Pilih layanan</option><option v-for="service in dataSets.services" :key="service.id" :value="service.id">{{ service.title }}</option></select></label>
+                <label class="field field-wide"><span>Deskripsi singkat</span><textarea v-model="form.description" rows="3" placeholder="Jelaskan paket ini secara singkat"></textarea></label>
+                <label class="field"><span>Harga (Rp)</span><input v-model.number="form.price" type="number" min="0" step="1000"></label>
+                <label class="field"><span>Keterangan harga</span><input v-model="form.price_label" type="text" placeholder="Contoh: Mulai dari / per siswa"></label>
+                <label class="field"><span>Tampilkan di halaman utama</span><select v-model="form.featured"><option :value="true">Ya</option><option :value="false">Tidak</option></select></label>
+                <label class="field"><span>Status paket</span><select v-model="form.is_published"><option :value="true">Dipublikasikan</option><option :value="false">Draft</option></select></label>
+                <label class="field"><span>Urutan tampil</span><input v-model.number="form.sort_order" type="number" min="0"></label>
+                <div class="field field-wide repeater-field">
+                  <div class="repeater-heading"><span>Yang termasuk dalam paket</span><button class="row-edit" type="button" @click="addPackageInclusion"><Plus :size="14" /> Tambah item</button></div>
+                  <p class="field-help">Contoh: dekorasi panggung, sound system, dokumentasi foto.</p>
+                  <div v-for="(item, index) in form.inclusions" :key="index" class="repeater-row">
+                    <input v-model="form.inclusions[index]" type="text" :aria-label="`Isi paket ${index + 1}`" placeholder="Contoh: Dokumentasi foto acara">
+                    <button class="row-delete" type="button" :aria-label="`Hapus isi paket ${index + 1}`" @click="removePackageInclusion(index)"><Trash2 :size="14" /> Hapus</button>
+                  </div>
+                  <span v-if="!form.inclusions.length" class="field-empty">Belum ada isi paket. Klik “Tambah item” untuk mulai mengisi.</span>
+                </div>
+                <div class="field field-wide repeater-field">
+                  <div class="repeater-heading"><span>Tambahan / add-on</span><button class="row-edit" type="button" @click="addPackageAddon"><Plus :size="14" /> Tambah add-on</button></div>
+                  <p class="field-help">Tambahkan peralatan atau layanan ekstra yang bisa dipilih pelanggan.</p>
+                  <div v-for="(addon, index) in form.addons" :key="addon.id || index" class="package-addon-editor">
+                    <label class="field"><span>Nama add-on</span><input v-model.trim="addon.name" type="text" placeholder="Contoh: Photobooth"></label>
+                    <label class="field"><span>Harga (Rp)</span><input v-model.number="addon.price" type="number" min="0" step="1000"></label>
+                    <label class="field"><span>Keterangan</span><input v-model.trim="addon.description" type="text" placeholder="Contoh: Foto cetak untuk tamu"></label>
+                    <button class="row-delete" type="button" :aria-label="`Hapus add-on ${index + 1}`" @click="removePackageAddon(index)"><Trash2 :size="14" /> Hapus</button>
+                  </div>
+                  <span v-if="!form.addons.length" class="field-empty">Belum ada add-on. Bagian ini boleh dikosongkan.</span>
+                </div>
+              </div>
+              <div v-else-if="active === 'landing_sections'" class="edit-fields">
+                <label class="field"><span>Judul bagian</span><input v-model.trim="form.title" type="text" required placeholder="Contoh: Layanan tambahan kami"></label>
+                <label class="field"><span>Teks pendukung</span><input v-model="form.subtitle" type="text" placeholder="Kalimat singkat di bawah judul (opsional)"></label>
+                <label class="field field-wide"><span>Isi bagian</span><textarea v-model="form.body" rows="4" placeholder="Tuliskan informasi yang ingin ditampilkan di beranda"></textarea></label>
+                <label class="field field-wide admin-image-field"><span>Gambar bagian <small>Opsional. Pilih gambar dari perangkat Anda.</small></span><input type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/gif" :disabled="saving" @change="selectImage($event, 'image_url')"><img v-if="form.image_url" class="admin-image-preview" :src="form.image_url" alt="Pratinjau gambar bagian"></label>
+                <label class="field"><span>Teks tombol (opsional)</span><input v-model="form.cta_label" type="text" placeholder="Contoh: Lihat semua layanan"></label>
+                <label class="field"><span>Tujuan tombol</span><input v-model="form.cta_url" type="text" placeholder="Contoh: /layanan"></label>
+                <label class="field"><span>Status bagian</span><select v-model="form.is_enabled"><option :value="true">Tampilkan di beranda</option><option :value="false">Sembunyikan</option></select></label>
+                <label class="field"><span>Urutan tampil</span><input v-model.number="form.sort_order" type="number" min="0"><small class="field-help">Angka lebih kecil tampil lebih dahulu.</small></label>
+              </div>
+              <div v-else class="edit-fields">
                 <template v-for="(value, key) in form" :key="key">
                   <label v-if="key !== 'id' && key !== 'created_at' && key !== 'updated_at' && key !== 'sort_order' && key !== 'metadata' && key !== 'addons' && key !== 'inclusions' && key !== 'media' && key !== 'value' && key !== 'package_id' && key !== 'category_id' && key !== 'service_id' && key !== 'is_public' && !['image_url', 'cover_image_url', 'logo_url', 'avatar_url'].includes(key)" class="field">
                     <span>{{ key.replaceAll('_', ' ') }}</span>
@@ -677,8 +768,6 @@ onMounted(loadDashboard)
                   <label v-if="key === 'category_id'" class="field"><span>Kategori</span><select v-model="form[key]"><option value="">Pilih kategori</option><option v-for="category in dataSets.categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label>
                   <label v-if="key === 'service_id'" class="field"><span>Layanan</span><select v-model="form[key]"><option value="">Pilih layanan</option><option v-for="service in dataSets.services" :key="service.id" :value="service.id">{{ service.title }}</option></select></label>
                   <label v-if="key === 'value' && !(active === 'site_settings' && form.key === 'logo_url')" class="field"><span>Nilai</span><input v-model="form.value" type="text"></label>
-                  <label v-if="key === 'inclusions'" class="field field-wide"><span>Isi paket (pisahkan dengan koma)</span><textarea :value="form.inclusions.join(', ')" rows="2" @input="form.inclusions = $event.target.value.split(',').map((item) => item.trim())"></textarea></label>
-                  <label v-if="key === 'addons'" class="field field-wide"><span>Add-on / peralatan (satu item per baris: nama | harga | deskripsi)</span><textarea :value="form.addons.map((addon) => `${addon.name || addon} | ${addon.price || 0} | ${addon.description || ''}`).join('\n')" rows="5" @input="form.addons = $event.target.value.split('\n').map((line) => { const [name, price = '0', description = ''] = line.split('|'); return { name: name.trim(), price: Number(price.trim()) || 0, description: description.trim() } }).filter((addon) => addon.name)"></textarea></label>
                 </template>
                 <label v-for="key in imageFieldKeys" :key="`image-${key}`" class="field field-wide admin-image-field">
                   <span>{{ key === 'cover_image_url' ? 'Gambar sampul' : key === 'logo_url' || (active === 'site_settings' && key === 'value') ? 'Logo situs' : key === 'avatar_url' ? 'Foto profil' : 'Gambar' }} <small>Pilih berkas gambar dari perangkat Anda.</small></span>
@@ -688,7 +777,7 @@ onMounted(loadDashboard)
               </div>
               <div class="edit-actions"><button class="button button-outline" @click="cancelEdit">Batal</button><button class="button button-dark" :disabled="saving" @click="saveRow">{{ saving ? 'Menyimpan...' : 'Simpan perubahan' }}</button></div>
             </div>
-            <div class="table-scroll"><table v-if="active !== 'site_settings'" class="admin-table"><thead><tr><th v-for="field in (active === 'services' ? ['title','category_id','summary','is_published'] : active === 'categories' ? ['name','slug','description','sort_order'] : active === 'packages' ? ['name','service_id','price','is_published'] : active === 'portfolios' ? ['title','category','is_published'] : active === 'faqs' ? ['question','answer','is_published'] : active === 'landing_sections' ? ['section_key','title','is_enabled'] : active === 'contacts' ? ['name','division','phone'] : active === 'clients' ? ['name','website_url','is_published'] : ['name','role','is_published'])" :key="field">{{ field.replaceAll('_',' ').toUpperCase() }}</th><th>AKSI</th></tr></thead><tbody><tr v-for="item in currentRows.filter((row) => JSON.stringify(row).toLowerCase().includes(query.toLowerCase()) && (filterStatus === 'semua' || (filterStatus === 'published' ? row.is_published : !row.is_published)))" :key="item.id"><td v-for="field in (active === 'services' ? ['title','category_id','summary','is_published'] : active === 'categories' ? ['name','slug','description','sort_order'] : active === 'packages' ? ['name','service_id','price','is_published'] : active === 'portfolios' ? ['title','category','is_published'] : active === 'faqs' ? ['question','answer','is_published'] : active === 'landing_sections' ? ['section_key','title','is_enabled'] : active === 'contacts' ? ['name','division','phone'] : active === 'clients' ? ['name','website_url','is_published'] : ['name','role','is_published'])" :key="field">{{ displayValue(item, field) }}</td><td class="row-actions"><button class="row-edit" @click="editRow(item)">Edit</button><button v-if="item.is_published !== undefined || item.is_enabled !== undefined" class="row-toggle" @click="togglePublished(item)">{{ (item.is_published ?? item.is_enabled) ? 'Sembunyikan' : 'Publikasikan' }}</button><button v-if="isSuperAdmin" class="row-delete" @click="deleteRow(item)">Hapus</button></td></tr></tbody></table>
+            <div class="table-scroll"><table v-if="active !== 'site_settings'" class="admin-table"><thead><tr><th v-for="field in (active === 'services' ? ['title','category_id','summary','is_published'] : active === 'categories' ? ['name','slug','description','sort_order'] : active === 'packages' ? ['name','service_id','price','is_published'] : active === 'portfolios' ? ['title','category','is_published'] : active === 'faqs' ? ['question','answer','is_published'] : active === 'landing_sections' ? ['title','subtitle','is_enabled'] : active === 'contacts' ? ['name','division','phone'] : active === 'clients' ? ['name','website_url','is_published'] : ['name','role','is_published'])" :key="field">{{ field === 'is_enabled' ? 'STATUS' : field.replaceAll('_',' ').toUpperCase() }}</th><th>AKSI</th></tr></thead><tbody><tr v-for="item in currentRows.filter((row) => JSON.stringify(row).toLowerCase().includes(query.toLowerCase()) && (filterStatus === 'semua' || (filterStatus === 'published' ? row.is_published : !row.is_published)))" :key="item.id"><td v-for="field in (active === 'services' ? ['title','category_id','summary','is_published'] : active === 'categories' ? ['name','slug','description','sort_order'] : active === 'packages' ? ['name','service_id','price','is_published'] : active === 'portfolios' ? ['title','category','is_published'] : active === 'faqs' ? ['question','answer','is_published'] : active === 'landing_sections' ? ['title','subtitle','is_enabled'] : active === 'contacts' ? ['name','division','phone'] : active === 'clients' ? ['name','website_url','is_published'] : ['name','role','is_published'])" :key="field">{{ displayValue(item, field) }}</td><td class="row-actions"><button class="row-edit" @click="editRow(item)">Edit</button><button v-if="item.is_published !== undefined || item.is_enabled !== undefined" class="row-toggle" @click="togglePublished(item)">{{ (item.is_published ?? item.is_enabled) ? 'Sembunyikan' : 'Publikasikan' }}</button><button v-if="isSuperAdmin" class="row-delete" @click="deleteRow(item)">Hapus</button></td></tr></tbody></table>
               <div v-if="active === 'site_settings'" class="settings-list"><article v-for="item in dataSets.site_settings" :key="item.id || item.key" class="setting-row"><div><strong>{{ item.label || item.key?.replaceAll('_',' ') || item.name }}</strong><small>Pengaturan situs</small></div><input v-model="item.value" @change="editRow(item)"><button class="row-edit" @click="editRow(item)">Ubah</button></article></div>
               <div v-if="!currentRows.length" class="admin-empty"><span>Belum ada konten. Mulai dengan menambahkan item baru.</span></div></div>
           </section>

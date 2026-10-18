@@ -1,20 +1,20 @@
 insert into public.categories (name, slug, description, icon, sort_order, is_published) values
-  ('Wedding', 'wedding', 'Hari istimewa, dirancang sepenuh hati.', 'Heart', 1, true),
-  ('Event & Corporate', 'event', 'Acara bermakna untuk setiap brand.', 'BriefcaseBusiness', 2, true),
-  ('Graduation', 'graduation', 'Perayaan pencapaian yang membanggakan.', 'GraduationCap', 3, true),
-  ('Event Organizer', 'organizing', 'Dari ide menjadi pengalaman tak terlupakan.', 'Sparkles', 4, true),
-  ('Yearbook', 'yearbook', 'Cerita satu angkatan, dalam satu kenangan.', 'BookOpen', 5, true)
+  ('Perpisahan & Wisuda', 'graduation', 'Rayakan perjalanan satu angkatan dan awal langkah berikutnya.', 'GraduationCap', 1, true),
+  ('Yearbook', 'yearbook', 'Kenangan satu angkatan, dirangkai jadi cerita yang bisa dibuka lagi.', 'BookOpen', 2, true),
+  ('Event & Corporate', 'event', 'Acara sekolah, komunitas, dan perusahaan yang tertata.', 'BriefcaseBusiness', 3, true),
+  ('Event Organizer', 'organizing', 'Dari rundown hingga hari-H, semua terkoordinasi.', 'Sparkles', 4, true),
+  ('Wedding', 'wedding', 'Perayaan personal yang dirancang dengan penuh perhatian.', 'Heart', 5, true)
 on conflict (slug) do update set name = excluded.name, description = excluded.description, icon = excluded.icon, sort_order = excluded.sort_order, is_published = excluded.is_published;
 
 insert into public.services (category_id, title, slug, summary, description, image_url, featured, sort_order, is_published)
 select c.id, v.title, v.slug, v.summary, v.description, v.image_url, v.featured, v.sort_order, true
 from (values
-  ('wedding', 'Wedding Planning', 'wedding-planning', 'Hari bahagia yang terasa begitu personal.', 'Tim kami merangkai setiap detail hari pernikahan dengan penuh perhatian, dari konsep hingga momen terakhir.', '/images/wedding-garden.jpg', true, 1),
-  ('event', 'Corporate & Brand Event', 'corporate-event', 'Acara profesional yang meninggalkan kesan.', 'Peluncuran produk, gathering, konferensi, dan perayaan perusahaan yang dirancang strategis.', '/images/corporate-event.jpg', true, 2),
-  ('graduation', 'Graduation Celebration', 'graduation-celebration', 'Rayakan perjalanan dan pencapaian bersama.', 'Konsep wisuda sekolah yang meriah dan tertata, dengan dekorasi, dokumentasi, dan produksi acara.', '/images/graduation.jpg', true, 3),
-  ('organizing', 'Full-Service Event Organizer', 'event-organizer', 'Ide terbaik, eksekusi yang tenang.', 'Perencanaan end-to-end untuk berbagai acara, ditangani tim berpengalaman dan vendor pilihan.', '/images/event-organizer.jpg', false, 4),
-  ('yearbook', 'Yearbook & Graduation Book', 'yearbook-story', 'Satu buku untuk ribuan cerita.', 'Yearbook premium dari konsep kreatif, sesi foto, desain, hingga cetak berkualitas.', '/images/yearbook.jpg', true, 5),
-  ('event', 'Photo & Video Production', 'visual-production', 'Momen berharga, tersimpan selamanya.', 'Dokumentasi foto dan video profesional untuk acara personal maupun perusahaan.', '/images/production.jpg', false, 6)
+  ('graduation', 'Perpisahan & Wisuda Sekolah', 'graduation-celebration', 'Rayakan perjalanan satu angkatan dengan acara yang seru dan tertata.', 'Konsep perpisahan dan wisuda sekolah dari panggung, rundown, hiburan, hingga dokumentasi—disesuaikan dengan karakter sekolah dan jumlah siswa.', '/images/graduation.jpg', true, 1),
+  ('yearbook', 'Yearbook & Buku Kenangan', 'yearbook-story', 'Satu angkatan, banyak cerita, satu kenangan yang bisa dibawa pulang.', 'Produksi buku kenangan sekolah dari konsep, sesi foto, desain, pengumpulan data siswa, hingga cetak.', '/images/yearbook.jpg', true, 2),
+  ('event', 'Acara Sekolah & Corporate', 'corporate-event', 'Acara besar dengan alur yang jelas dan pengalaman yang berkesan.', 'Perayaan sekolah, gathering, konferensi, peluncuran, dan acara komunitas yang dirancang sesuai tujuan dan audiens.', '/images/corporate-event.jpg', true, 3),
+  ('organizing', 'Event Organizer', 'event-organizer', 'Dari ide, rundown, sampai koordinasi hari-H.', 'Tim pelaksana untuk membantu sekolah, komunitas, dan perusahaan mengelola acara dari awal hingga selesai.', '/images/event-organizer.jpg', true, 4),
+  ('event', 'Produksi Foto & Video', 'visual-production', 'Dokumentasi acara yang siap dikenang dan dibagikan.', 'Dokumentasi foto, video highlight, photobooth, dan live streaming untuk acara sekolah maupun umum.', '/images/production.jpg', false, 5),
+  ('wedding', 'Wedding Planning', 'wedding-planning', 'Perayaan personal yang terasa dekat dan tertata.', 'Tim kami membantu merencanakan detail pernikahan dari konsep hingga hari acara.', '/images/wedding-garden.jpg', false, 6)
 ) as v(category_slug, title, slug, summary, description, image_url, featured, sort_order)
 join public.categories c on c.slug = v.category_slug
 on conflict (slug) do update set category_id = excluded.category_id, title = excluded.title, summary = excluded.summary, description = excluded.description, image_url = excluded.image_url, featured = excluded.featured, sort_order = excluded.sort_order, is_published = true;
@@ -22,11 +22,11 @@ on conflict (slug) do update set category_id = excluded.category_id, title = exc
 insert into public.packages (service_id, name, slug, description, price, price_label, inclusions, featured, sort_order, is_published)
 select s.id, v.name, v.slug, v.description, v.price, v.price_label, v.inclusions, v.featured, v.sort_order, true
 from (values
-  ('wedding-planning', 'Intimate Wedding', 'intimate-wedding', 'Perayaan hangat hingga 150 tamu.', 28500000, 'Mulai dari', array['Wedding planner & coordinator','Dekorasi area akad dan resepsi','Master of ceremony','Dokumentasi foto 6 jam']::text[], true, 1),
-  ('corporate-event', 'Signature Corporate', 'signature-corporate', 'Pengalaman brand yang berkesan.', 45000000, 'Mulai dari', array['Konsep dan creative direction','Manajemen venue dan vendor','Produksi panggung dan visual','Koordinator hari-H']::text[], true, 2),
-  ('graduation-celebration', 'School Celebration', 'school-celebration', 'Momen kelulusan penuh kebanggaan.', 18500000, 'Mulai dari', array['Desain panggung dan backdrop','MC dan rundown acara','Sound system standar','Dokumentasi foto acara']::text[], false, 3),
-  ('yearbook-story', 'Yearbook Classic', 'yearbook-classic', 'Desain personal, cetak premium.', 185000, 'Mulai dari / buku', array['Desain layout eksklusif','Sesi foto kelompok','Hard cover premium','Minimal 100 eksemplar']::text[], true, 4),
-  ('event-organizer', 'Full Event Planning', 'full-event-planning', 'Perencanaan lengkap tanpa repot.', 32000000, 'Mulai dari', array['Konsultasi dan perencanaan','Koordinasi vendor','Rundown dan produksi','Tim pelaksana di lokasi']::text[], false, 5)
+  ('graduation-celebration', 'Perpisahan Sekolah', 'school-celebration', 'Paket acara kelulusan yang bisa disesuaikan dengan kebutuhan sekolah.', 18500000, 'Mulai dari', array['Desain panggung dan backdrop','MC dan rundown acara','Sound system standar','Dokumentasi foto acara']::text[], true, 1),
+  ('yearbook-story', 'Yearbook Satu Angkatan', 'yearbook-classic', 'Dari sesi foto sampai buku kenangan siap dibagikan.', 185000, 'Mulai dari / buku', array['Desain layout eksklusif','Sesi foto kelompok','Hard cover premium','Minimal 100 eksemplar']::text[], true, 2),
+  ('corporate-event', 'Signature Event', 'signature-corporate', 'Produksi acara sekolah, komunitas, atau perusahaan.', 45000000, 'Mulai dari', array['Konsep dan creative direction','Manajemen venue dan vendor','Produksi panggung dan visual','Koordinator hari-H']::text[], true, 3),
+  ('event-organizer', 'Full Event Planning', 'full-event-planning', 'Perencanaan lengkap tanpa repot.', 32000000, 'Mulai dari', array['Konsultasi dan perencanaan','Koordinasi vendor','Rundown dan produksi','Tim pelaksana di lokasi']::text[], false, 4),
+  ('wedding-planning', 'Intimate Wedding', 'intimate-wedding', 'Perayaan hangat hingga 150 tamu.', 28500000, 'Mulai dari', array['Wedding planner & coordinator','Dekorasi area akad dan resepsi','Master of ceremony','Dokumentasi foto 6 jam']::text[], false, 5)
 ) as v(service_slug, name, slug, description, price, price_label, inclusions, featured, sort_order)
 join public.services s on s.slug = v.service_slug
 on conflict (slug) do update set service_id = excluded.service_id, name = excluded.name, description = excluded.description, price = excluded.price, price_label = excluded.price_label, inclusions = excluded.inclusions, featured = excluded.featured, sort_order = excluded.sort_order, is_published = true;
@@ -79,20 +79,20 @@ on conflict (package_id, name) do update set
 insert into public.portfolios (title, slug, category, category_id, description, cover_image_url, is_published, sort_order)
 select v.title, v.slug, v.category, c.id, v.description, v.image_url, true, v.sort_order
 from (values
-  ('A Garden Wedding','a-garden-wedding','Wedding','wedding','Perayaan intim di tengah taman tropis.','/images/wedding-garden.jpg',1),
-  ('Together, Forward','together-forward','Corporate','event','Annual gathering dengan sentuhan modern.','/images/corporate-event.jpg',2),
-  ('Class of 2025','class-of-2025','Graduation','graduation','Malam apresiasi penuh cahaya.','/images/graduation.jpg',3),
+  ('Malam Perpisahan Angkatan 2025','class-of-2025','Perpisahan & Wisuda','graduation','Satu malam untuk merayakan perjalanan dan teman-teman seperjuangan.','/images/graduation.jpg',1),
+  ('Yearbook: Our Little Universe','our-little-universe','Yearbook','yearbook','Cerita satu angkatan dalam buku kenangan penuh warna.','/images/yearbook.jpg',2),
+  ('Together, Forward','together-forward','Event & Corporate','event','Gathering dengan panggung, visual, dan alur acara yang rapi.','/images/corporate-event.jpg',3),
   ('The Art of Gathering','the-art-of-gathering','Event','organizing','Pameran kreatif dengan alur yang intim.','/images/event-organizer.jpg',4),
-  ('Our Little Universe','our-little-universe','Yearbook','yearbook','Yearbook penuh warna dan kepribadian.','/images/yearbook.jpg',5),
+  ('A Garden Wedding','a-garden-wedding','Wedding','wedding','Perayaan intim di tengah taman tropis.','/images/wedding-garden.jpg',5),
   ('Golden Hour Vows','golden-hour-vows','Wedding','wedding','Akad dan resepsi di bawah senja.','/images/wedding-sunset.jpg',6)
 ) as v(title, slug, category, category_slug, description, image_url, sort_order)
 left join public.categories c on c.slug = v.category_slug
 on conflict (slug) do update set title = excluded.title, category = excluded.category, category_id = excluded.category_id, description = excluded.description, cover_image_url = excluded.cover_image_url, is_published = true, sort_order = excluded.sort_order;
 
 insert into public.testimonials (name, role, quote, rating, sort_order, is_published) values
-  ('Nadia & Arief', 'Wedding client', 'Semua terasa personal dan kami bisa menikmati hari tanpa memikirkan hal teknis. Timnya perhatian sekali pada detail.', 5, 1, true),
-  ('Dina Prameswari', 'Marketing Manager', 'Acara berjalan rapi, tim responsif, dan pengalaman brand kami benar-benar terasa di setiap sudut.', 5, 2, true),
-  ('SMA Cakrawala', 'School partner', 'Yearbook-nya jadi kenangan yang dibanggakan satu angkatan. Prosesnya pun menyenangkan untuk siswa.', 5, 3, true)
+  ('SMA Cakrawala', 'Panitia perpisahan sekolah', 'Dari persiapan sampai acara selesai, timnya sigap. Anak-anak menikmati malam perpisahan dan guru bisa fokus mendampingi mereka.', 5, 1, true),
+  ('Universitas Pertiwi', 'Panitia wisuda', 'Alur acara, panggung, dan dokumentasi tertata baik. Koordinasi dengan panitia kampus juga berjalan lancar.', 5, 2, true),
+  ('Dina Prameswari', 'Marketing Manager', 'Acara berjalan rapi, tim responsif, dan pengalaman brand kami benar-benar terasa di setiap sudut.', 5, 3, true)
 on conflict do nothing;
 
 insert into public.clients (name, sort_order, is_published) values
@@ -100,26 +100,26 @@ insert into public.clients (name, sort_order, is_published) values
 on conflict do nothing;
 
 insert into public.faqs (question, answer, sort_order, is_published) values
-  ('Seberapa awal sebaiknya saya menghubungi tim?', 'Untuk pernikahan, idealnya 6–12 bulan sebelum hari acara. Untuk jenis acara lain, hubungi kami sesegera mungkin agar tanggal dan kebutuhan Anda dapat kami siapkan.', 1, true),
+  ('Kapan sebaiknya sekolah mulai merencanakan acara perpisahan?', 'Idealnya hubungi kami 3–6 bulan sebelum acara agar waktu untuk menyusun konsep, anggaran, venue, dan koordinasi sekolah cukup. Kami tetap terbuka untuk kebutuhan dengan jadwal lebih singkat.', 1, true),
   ('Apakah paket bisa disesuaikan?', 'Tentu. Paket adalah titik awal; kami akan menyusun penawaran berdasarkan jumlah tamu, lokasi, konsep, dan kebutuhan khusus Anda.', 2, true),
   ('Apakah Abadi nan Jaya melayani di luar kota?', 'Ya, kami melayani berbagai kota di Indonesia. Biaya transportasi dan akomodasi akan tercantum transparan dalam penawaran.', 3, true)
 on conflict do nothing;
 
 insert into public.contacts (name, title, division, phone, email, sort_order, is_published) values
-  ('Alya Putri', 'Wedding Consultant', 'Wedding & Personal', '6281234567890', 'wedding@abadinanjaya.id', 1, true),
-  ('Raka Mahendra', 'Event Consultant', 'Corporate & School', '6281234567891', 'event@abadinanjaya.id', 2, true)
+  ('Raka Mahendra', 'Konsultan Acara Sekolah', 'Sekolah & Event', '6281234567891', 'event@abadinanjaya.id', 1, true),
+  ('Alya Putri', 'Wedding Consultant', 'Wedding & Personal', '6281234567890', 'wedding@abadinanjaya.id', 2, true)
 on conflict do nothing;
 
 insert into public.landing_sections (section_key, title, subtitle, body, is_enabled, sort_order) values
-  ('hero', 'Setiap perayaan punya cerita.', 'Kami hadir untuk merancang momen yang terasa dekat, indah, dan selalu diingat.', '', true, 1),
-  ('services', 'Satu partner untuk setiap perayaan.', '', '', true, 2),
-  ('packages', 'Awali dari yang paling sesuai.', '', '', true, 3),
-  ('portfolio', 'Cerita yang pernah kami rangkai.', '', '', true, 4),
-  ('about', 'Bukan sekadar acara.', 'Sebuah cerita untuk dikenang.', 'Kami percaya momen terbaik lahir ketika semua terasa dekat dan bermakna. Sejak 2014, kami membantu keluarga, sekolah, dan brand merayakan perjalanan mereka.', true, 5),
-  ('testimonials', 'Kata mereka setelah hari istimewa.', '', '', true, 6),
+  ('hero', 'Perpisahan sekolah, jadi cerita satu angkatan.', 'Panggung, hiburan, rundown, dan dokumentasi kami siapkan. Sekolah dan siswa tinggal menikmati momennya.', '', true, 1),
+  ('services', 'Partner acara untuk sekolah dan banyak cerita lain.', '', '', true, 2),
+  ('packages', 'Paket perpisahan yang bisa disesuaikan.', 'Mulai dari kebutuhan inti sampai tambahan panggung, photobooth, dokumentasi, dan yearbook.', '', true, 3),
+  ('portfolio', 'Momen sekolah yang pernah kami rayakan.', '', '', true, 4),
+  ('about', 'Acara tertata. Semua bisa ikut merayakan.', 'Untuk sekolah, komunitas, dan perusahaan.', 'Abadi nan Jaya membantu panitia mengelola konsep, produksi, dan koordinasi acara. Fokus utama kami adalah perayaan sekolah—mulai dari perpisahan dan wisuda hingga buku kenangan—serta berbagai acara komunitas, corporate, dan personal.', true, 5),
+  ('testimonials', 'Cerita dari panitia dan sekolah.', '', '', true, 6),
   ('clients', 'Mereka yang telah bersama kami.', '', '', true, 7),
   ('faq', 'Pertanyaan yang sering muncul.', '', '', true, 8),
-  ('cta', 'Ada cerita yang ingin Anda rayakan?', 'Ceritakan rencana Anda. Kami akan membantu merangkai sisanya.', '', true, 9)
+  ('cta', 'Sedang menyiapkan perpisahan sekolah?', 'Ceritakan jumlah siswa, rencana acara, dan kebutuhan sekolah. Kami bantu susun langkah berikutnya.', '', true, 9)
 on conflict (section_key) do update set title = excluded.title, subtitle = excluded.subtitle, body = excluded.body, is_enabled = excluded.is_enabled, sort_order = excluded.sort_order;
 
 insert into public.site_settings (key, value, is_public, sort_order) values
