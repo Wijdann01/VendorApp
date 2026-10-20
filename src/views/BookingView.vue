@@ -6,6 +6,7 @@ import { useSiteStore } from '../stores/site'
 import { useToast } from '../composables/useToast'
 import { formatPrice } from '../data/demo'
 import { supabase, supabaseConfigured } from '../lib/supabase'
+import CurrencyInput from '../components/CurrencyInput.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,6 +43,14 @@ const submitted = ref(false)
 const selectedPackage = computed(() => site.packages.find((item) => item.id === form.value.package_id || item.slug === form.value.package_id))
 const packageService = computed(() => site.services.find((service) => service.id === selectedPackage.value?.service_id))
 const availableAddons = computed(() => selectedPackage.value?.addons || [])
+const availableServices = computed(() => site.services.filter((service) => selectedEventType.value?.service_ids?.includes(service.id)))
+const availablePackages = computed(() => site.packages.filter((item) =>
+  selectedEventType.value
+  && item.event_type_id === selectedEventType.value.id
+  && availableServices.value.some((service) => service.id === item.service_id)
+  && (!form.value.service_id || item.service_id === form.value.service_id)))
+const availableEventTypes = computed(() => site.eventTypes.filter((eventType) => eventType.booking_type === form.value.booking_type && eventType.is_published))
+const selectedEventType = computed(() => availableEventTypes.value.find((eventType) => eventType.name === form.value.event_type))
 const selectedItems = computed(() => availableAddons.value
   .filter((addon) => selectedAddons.value[addon.id || addon.name])
   .map((addon) => ({ id: addon.id, name: addon.name, price: Number(addon.price || 0), quantity: Number(selectedAddons.value[addon.id || addon.name]) })))
@@ -61,7 +70,14 @@ onMounted(async () => {
   }
   const packageSlug = typeof route.query.package === 'string' ? route.query.package : ''
   const initialPackage = site.packages.find((item) => item.slug === packageSlug)
-  if (initialPackage) choosePackage(initialPackage)
+  if (initialPackage) {
+    const eventType = site.eventTypes.find((entry) => entry.id === initialPackage.event_type_id)
+    if (eventType) {
+      form.value.booking_type = eventType.booking_type
+      form.value.event_type = eventType.name
+    }
+    choosePackage(initialPackage)
+  }
 })
 
 watch(() => form.value.package_id, () => {
@@ -69,11 +85,46 @@ watch(() => form.value.package_id, () => {
 })
 
 function choosePackage(item) {
-  form.value.package_id = item.id
   const service = site.services.find((entry) => entry.id === item.service_id)
+  const eventType = site.eventTypes.find((entry) => entry.id === item.event_type_id && entry.is_published)
+  if (item.id && (!availableServices.value.some((entry) => entry.id === service?.id) || eventType?.name !== form.value.event_type || eventType?.booking_type !== form.value.booking_type)) {
+    form.value.package_id = ''
+    notify('Paket ini tidak sesuai dengan jenis acara dan tipe pemesan yang dipilih.', 'error')
+    return
+  }
+  form.value.package_id = item.id
   if (service) {
     form.value.service_id = service.id
-    form.value.event_type = site.categories.find((category) => category.id === service.category_id)?.name || ''
+  }
+}
+
+function changeBookingType(type) {
+  if (form.value.booking_type === type) return
+  form.value.booking_type = type
+  form.value.service_id = ''
+  form.value.package_id = ''
+  form.value.event_type = ''
+  form.value.organization_name = ''
+  form.value.organization_type = ''
+  form.value.contact_position = ''
+  selectedAddons.value = {}
+  errors.value = {}
+}
+
+function changeService(serviceId) {
+  form.value.service_id = serviceId
+  form.value.package_id = ''
+  selectedAddons.value = {}
+}
+
+function changeEventType(eventTypeName) {
+  form.value.event_type = eventTypeName
+  if (!selectedEventType.value?.service_ids?.includes(form.value.service_id)) {
+    form.value.service_id = ''
+  }
+  if (selectedPackage.value?.event_type_id !== selectedEventType.value?.id || !availableServices.value.some((service) => service.id === selectedPackage.value?.service_id)) {
+    form.value.package_id = ''
+    selectedAddons.value = {}
   }
 }
 
@@ -85,8 +136,12 @@ function validate() {
   if (form.value.booking_type === 'organization' && form.value.organization_name.trim().length < 2) result.organization_name = 'Masukkan nama instansi atau sekolah.'
   if (form.value.booking_type === 'organization' && !form.value.organization_type) result.organization_type = 'Pilih jenis instansi.'
   if (!form.value.event_type) result.event_type = 'Pilih jenis acara.'
+  else if (!selectedEventType.value) result.event_type = 'Jenis acara tidak sesuai dengan tipe pemesan.'
+  if (!form.value.service_id || !availableServices.value.some((service) => service.id === form.value.service_id)) result.service_id = 'Pilih layanan yang tersedia untuk jenis acara ini.'
+  if (form.value.package_id && !availablePackages.value.some((item) => item.id === form.value.package_id)) result.package_id = 'Paket harus sesuai dengan jenis acara dan layanan yang dipilih.'
   if (!form.value.event_date) result.event_date = 'Tentukan tanggal acara atau pilih tanggal sementara.'
   else if (form.value.event_date < minimumDate) result.event_date = 'Tanggal acara tidak boleh di masa lalu.'
+  if (form.value.event_start_time && form.value.event_end_time && form.value.event_end_time <= form.value.event_start_time) result.event_end_time = 'Waktu selesai harus setelah waktu mulai.'
   if (!form.value.event_city.trim()) result.event_city = 'Masukkan kota tempat acara.'
   if (!Number.isSafeInteger(Number(form.value.guest_count)) || Number(form.value.guest_count) < 1 || Number(form.value.guest_count) > 100000) result.guest_count = 'Masukkan jumlah peserta atau tamu yang valid (1–100.000).'
   if (form.value.budget_min && (!Number.isFinite(Number(form.value.budget_min)) || Number(form.value.budget_min) < 0)) result.budget_min = 'Anggaran minimum harus angka nol atau lebih.'
@@ -106,29 +161,6 @@ function changeAddon(addon, amount) {
     return
   }
   selectedAddons.value = { ...selectedAddons.value, [key]: next }
-}
-
-function buildMessage() {
-  const parts = [
-    `Tipe booking: ${form.value.booking_type === 'organization' ? 'Instansi / sekolah' : 'Personal'}`,
-    selectedPackage.value ? `Paket: ${selectedPackage.value.name}` : 'Paket: Mohon rekomendasi',
-    `Jenis acara: ${form.value.event_type}`,
-    form.value.event_date ? `Tanggal: ${form.value.event_date}` : '',
-    form.value.event_start_time ? `Waktu: ${form.value.event_start_time}${form.value.event_end_time ? `–${form.value.event_end_time}` : ''}` : '',
-    `Perkiraan peserta/tamu: ${form.value.guest_count}`,
-    form.value.organization_name ? `Instansi: ${form.value.organization_name} (${form.value.organization_type})` : '',
-    form.value.contact_position ? `Jabatan: ${form.value.contact_position}` : '',
-    form.value.event_location ? `Venue/alamat: ${form.value.event_location}` : '',
-    form.value.event_city ? `Kota: ${form.value.event_city}` : '',
-    form.value.venue_type ? `Jenis venue: ${form.value.venue_type}` : '',
-    form.value.budget_min || form.value.budget_max ? `Anggaran: ${form.value.budget_min ? formatPrice(form.value.budget_min) : 'Belum ditentukan'} – ${form.value.budget_max ? formatPrice(form.value.budget_max) : 'fleksibel'}` : '',
-    form.value.event_theme ? `Tema/konsep: ${form.value.event_theme}` : '',
-    selectedItems.value.length ? `Add-on/peralatan:\n${selectedItems.value.map((item) => `- ${item.name} x ${item.quantity} (${formatPrice(item.price)} per item)`).join('\n')}` : 'Add-on/peralatan: belum dipilih',
-    `Perkiraan paket dan add-on: ${formatPrice(estimatedTotal.value)}${selectedPackage.value?.price_label?.includes('buku') ? ' (belum termasuk jumlah buku)' : ''}`,
-    `Kebutuhan khusus: ${form.value.special_requirements || 'Tidak ada'}`,
-    `Cerita dan detail acara:\n${form.value.message.trim()}`,
-  ]
-  return parts.filter(Boolean).join('\n')
 }
 
 async function submitBooking() {
@@ -157,7 +189,7 @@ async function submitBooking() {
     event_theme: form.value.event_theme.trim(),
     selected_addons: selectedItems.value,
     special_requirements: form.value.special_requirements.trim(),
-    message: buildMessage(),
+    message: form.value.message.trim(),
     status: 'baru',
   }
   try {
@@ -187,7 +219,7 @@ async function submitBooking() {
   <section v-else class="section section-paper"><div class="container booking-layout">
     <form class="booking-form" novalidate @submit.prevent="submitBooking">
       <div class="booking-step-heading"><span>01</span><div><h2>Siapa yang sedang merayakan?</h2><p>Pilih tipe pemesan agar kami menyesuaikan kebutuhan acara.</p></div></div>
-      <div class="booking-type-switch"><button type="button" :class="{ selected: form.booking_type === 'organization' }" @click="form.booking_type = 'organization'"><span class="booking-type-icon">01</span><strong>Instansi / Sekolah</strong><small>Perpisahan, wisuda, yearbook, corporate</small></button><button type="button" :class="{ selected: form.booking_type === 'personal' }" @click="form.booking_type = 'personal'"><span class="booking-type-icon">02</span><strong>Personal</strong><small>Wedding, ulang tahun, perayaan keluarga</small></button></div>
+      <div class="booking-type-switch"><button type="button" :class="{ selected: form.booking_type === 'organization' }" @click="changeBookingType('organization')"><span class="booking-type-icon">01</span><strong>Instansi / Sekolah</strong><small>Perpisahan, wisuda, yearbook, corporate</small></button><button type="button" :class="{ selected: form.booking_type === 'personal' }" @click="changeBookingType('personal')"><span class="booking-type-icon">02</span><strong>Personal</strong><small>Wedding, ulang tahun, perayaan keluarga</small></button></div>
       <div class="booking-form-grid">
         <label class="field"><span>{{ form.booking_type === 'organization' ? 'Nama PIC / penanggung jawab *' : 'Nama lengkap *' }}</span><input v-model="form.name" autocomplete="name" placeholder="Nama Anda"><small v-if="errors.name" class="field-error">{{ errors.name }}</small></label>
         <label class="field"><span>Email aktif *</span><input v-model="form.email" type="email" autocomplete="email" placeholder="nama@email.com"><small v-if="errors.email" class="field-error">{{ errors.email }}</small></label>
@@ -199,9 +231,9 @@ async function submitBooking() {
 
       <div class="booking-step-heading booking-step-divider"><span>02</span><div><h2>Pilih layanan dan paket</h2><p>Anda dapat meminta rekomendasi jika belum menentukan paket.</p></div></div>
       <div class="booking-form-grid">
-        <label class="field"><span>Layanan yang dibutuhkan *</span><select v-model="form.service_id" @change="form.package_id = ''"><option value="">Pilih layanan</option><option v-for="service in site.services" :key="service.id" :value="service.id">{{ service.title }}</option></select></label>
-        <label class="field"><span>Paket pilihan</span><select :value="form.package_id" @change="choosePackage(site.packages.find((item) => item.id === $event.target.value) || { id: '', service_id: form.service_id })"><option value="">Minta rekomendasi paket</option><option v-for="item in site.packages.filter((entry) => !form.service_id || entry.service_id === form.service_id)" :key="item.id" :value="item.id">{{ item.name }} — {{ formatPrice(item.price) }}</option></select></label>
-        <label class="field"><span>Jenis acara *</span><select v-model="form.event_type"><option value="">Pilih jenis acara</option><option v-for="category in site.categories" :key="category.id" :value="category.name">{{ category.name }}</option><option>Gathering / ulang tahun</option><option>Lainnya</option></select><small v-if="errors.event_type" class="field-error">{{ errors.event_type }}</small></label>
+        <label class="field"><span>Jenis acara *</span><select :value="form.event_type" @change="changeEventType($event.target.value)"><option value="">Pilih jenis acara</option><option v-for="eventType in availableEventTypes" :key="eventType.id" :value="eventType.name">{{ eventType.name }}</option></select><small v-if="errors.event_type" class="field-error">{{ errors.event_type }}</small></label>
+        <label class="field"><span>Layanan yang dibutuhkan *</span><select :value="form.service_id" :disabled="!selectedEventType" @change="changeService($event.target.value)"><option value="">{{ selectedEventType ? 'Pilih layanan' : 'Pilih jenis acara terlebih dahulu' }}</option><option v-for="service in availableServices" :key="service.id" :value="service.id">{{ service.title }}</option></select><small v-if="errors.service_id" class="field-error">{{ errors.service_id }}</small></label>
+        <label class="field"><span>Paket pilihan</span><select :value="form.package_id" :disabled="!selectedEventType" @change="choosePackage(availablePackages.find((item) => item.id === $event.target.value) || { id: '', service_id: form.service_id })"><option value="">{{ selectedEventType ? 'Minta rekomendasi paket' : 'Pilih jenis acara terlebih dahulu' }}</option><option v-for="item in availablePackages" :key="item.id" :value="item.id">{{ item.name }} — {{ formatPrice(item.price) }}</option></select><small v-if="errors.package_id" class="field-error">{{ errors.package_id }}</small></label>
         <label class="field"><span>Tema atau konsep acara</span><input v-model="form.event_theme" placeholder="Contoh: garden party, formal, tropical"></label>
       </div>
 
@@ -216,7 +248,7 @@ async function submitBooking() {
         <label class="field"><span>Tanggal acara *</span><input v-model="form.event_date" type="date" :min="minimumDate"><small v-if="errors.event_date" class="field-error">{{ errors.event_date }}</small></label>
         <label class="field"><span>Jumlah tamu / peserta *</span><input v-model.number="form.guest_count" type="number" min="1" placeholder="Contoh: 250"><small v-if="errors.guest_count" class="field-error">{{ errors.guest_count }}</small></label>
         <label class="field"><span>Waktu mulai</span><input v-model="form.event_start_time" type="time"></label>
-        <label class="field"><span>Waktu selesai</span><input v-model="form.event_end_time" type="time"></label>
+        <label class="field"><span>Waktu selesai</span><input v-model="form.event_end_time" type="time"><small v-if="errors.event_end_time" class="field-error">{{ errors.event_end_time }}</small></label>
         <label class="field"><span>Kota acara *</span><input v-model="form.event_city" placeholder="Contoh: Jakarta Selatan"><small v-if="errors.event_city" class="field-error">{{ errors.event_city }}</small></label>
         <label class="field"><span>Jenis venue</span><select v-model="form.venue_type"><option value="">Belum ditentukan</option><option>Ballroom / hotel</option><option>Gedung / aula sekolah</option><option>Outdoor / taman</option><option>Kantor / convention center</option><option>Rumah / private venue</option><option>Venue belum dipilih</option><option>Lainnya</option></select></label>
         <label class="field field-wide"><span>Nama venue dan alamat (jika sudah ada)</span><input v-model="form.event_location" placeholder="Nama venue, alamat lengkap, atau tautan lokasi"></label>
@@ -224,8 +256,8 @@ async function submitBooking() {
 
       <div class="booking-step-heading booking-step-divider"><span>04</span><div><h2>Anggaran dan kebutuhan khusus</h2><p>Opsional — membantu kami menyusun rekomendasi yang realistis.</p></div></div>
       <div class="booking-form-grid">
-        <label class="field"><span>Anggaran minimum</span><input v-model.number="form.budget_min" type="number" min="0" step="500000" placeholder="Rp"></label>
-        <label class="field"><span>Anggaran maksimum</span><input v-model.number="form.budget_max" type="number" min="0" step="500000" placeholder="Rp"><small v-if="errors.budget_max" class="field-error">{{ errors.budget_max }}</small></label>
+        <label class="field"><span>Anggaran minimum (Rp)</span><CurrencyInput v-model="form.budget_min" aria-label="Anggaran minimum dalam rupiah" placeholder="Contoh: 1.000.000" nullable /><small v-if="errors.budget_min" class="field-error">{{ errors.budget_min }}</small></label>
+        <label class="field"><span>Anggaran maksimum (Rp)</span><CurrencyInput v-model="form.budget_max" aria-label="Anggaran maksimum dalam rupiah" placeholder="Contoh: 10.000.000" nullable /><small v-if="errors.budget_max" class="field-error">{{ errors.budget_max }}</small></label>
         <label class="field field-wide"><span>Kebutuhan khusus atau perlengkapan</span><textarea v-model="form.special_requirements" rows="3" placeholder="Contoh: akses kursi roda, kebutuhan listrik, panggung tambahan, konsumsi khusus..."></textarea></label>
         <label class="field field-wide"><span>Ceritakan rencana acara Anda *</span><textarea v-model="form.message" rows="4" placeholder="Tujuan acara, susunan kegiatan, hal yang paling penting untuk Anda, atau kebutuhan lain..." /><small v-if="errors.message" class="field-error">{{ errors.message }}</small></label>
       </div>

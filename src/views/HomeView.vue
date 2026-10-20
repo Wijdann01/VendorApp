@@ -14,6 +14,11 @@ const orderFor = (key, fallback) => site.sections.find((item) => item.section_ke
 const customSections = computed(() => site.sections
   .filter((item) => !builtInSectionKeys.has(item.section_key) && item.is_enabled !== false)
   .sort((first, second) => (first.sort_order ?? 0) - (second.sort_order ?? 0)))
+const safeLandingUrl = (value) => {
+  const url = String(value || '').trim()
+  return url.startsWith('/') || /^https?:\/\//i.test(url) ? url : '#'
+}
+const isExternalLandingUrl = (value) => /^https?:\/\//i.test(String(value || '').trim())
 const getCategoryName = (id) => site.categories.find((category) => category.id === id)?.name || categoryName(id)
 const featuredServices = computed(() => site.services.filter((service) => service.featured).slice(0, 4))
 const featuredPackages = computed(() => site.packages
@@ -80,24 +85,34 @@ const featuredWork = computed(() => site.portfolios.slice(0, 3))
 
     <section v-if="visible('testimonials')" class="section section-cream" :style="{ order: orderFor('testimonials', 6) }"><div class="container">
       <div class="section-heading centered-heading"><span class="eyebrow">CERITA DARI MEREKA</span><h2>{{ section('testimonials')?.title || 'Cerita dari panitia dan sekolah.' }}</h2></div>
-      <div class="testimonial-grid"><article v-for="item in site.testimonials.slice(0, 3)" :key="item.id" class="testimonial-card"><div class="stars"><Star v-for="star in (item.rating || 5)" :key="star" :size="14" fill="currentColor" /></div><blockquote>“{{ item.quote }}”</blockquote><div class="testimonial-author"><span class="avatar">{{ item.name?.charAt(0) }}</span><div><strong>{{ item.name }}</strong><small>{{ item.role }}</small></div></div></article></div>
+      <div class="testimonial-grid"><article v-for="item in site.testimonials.slice(0, 3)" :key="item.id" class="testimonial-card"><div class="stars"><Star v-for="star in (item.rating || 5)" :key="star" :size="14" fill="currentColor" /></div><blockquote>“{{ item.quote }}”</blockquote><div class="testimonial-author"><img v-if="item.avatar_url" class="testimonial-avatar" :src="item.avatar_url" :alt="`Foto profil ${item.name}`" loading="lazy"><span v-else class="avatar">{{ item.name?.charAt(0) }}</span><div><strong>{{ item.name }}</strong><small>{{ item.role }}</small></div></div></article></div>
     </div></section>
 
-    <section v-if="visible('clients')" class="section section-paper clients-section" :style="{ order: orderFor('clients', 7) }"><div class="container"><span class="eyebrow">{{ section('clients')?.title || 'MEREKA YANG TELAH BERSAMA KAMI' }}</span><div class="client-row"><span v-for="client in site.clients.slice(0, 5)" :key="client.id">{{ client.name }}</span></div></div></section>
+    <section v-if="visible('clients')" class="section section-paper clients-section" :style="{ order: orderFor('clients', 7) }"><div class="container"><span class="eyebrow">{{ section('clients')?.title || 'MEREKA YANG TELAH BERSAMA KAMI' }}</span><div class="client-row"><div v-for="client in site.clients" :key="client.id" class="client-logo-card"><img v-if="client.logo_url" :src="client.logo_url" :alt="`Logo ${client.name}`" loading="lazy"><span class="client-logo-name">{{ client.name }}</span></div></div></div></section>
 
     <section v-if="visible('faq')" class="section section-cream" :style="{ order: orderFor('faq', 8) }"><div class="container faq-layout"><div class="faq-intro"><span class="eyebrow">FAQ</span><h2>{{ section('faq')?.title || 'Pertanyaan yang sering muncul.' }}</h2><p>Belum menemukan jawaban? Kami dengan senang hati membantu.</p><RouterLink class="text-link" to="/kontak">Tanyakan pada kami <ArrowRight :size="16" /></RouterLink></div><div class="faq-list"><article v-for="(faq, index) in site.faqs" :key="faq.id" class="faq-item" :class="{ expanded: openFaq === index }"><button type="button" @click="openFaq = openFaq === index ? -1 : index"><span>{{ faq.question }}</span><ChevronDown :size="17" /></button><p v-if="openFaq === index">{{ faq.answer }}</p></article></div></div></section>
 
     <section v-if="visible('cta')" class="closing-cta" :style="{ order: orderFor('cta', 9) }"><div class="container closing-inner"><Sparkles :size="23" /><span class="eyebrow eyebrow-light">MOMEN BERIKUTNYA BISA JADI MILIK ANDA</span><h2>{{ section('cta')?.title || 'Ada cerita yang ingin Anda rayakan?' }}</h2><p>{{ section('cta')?.subtitle || 'Ceritakan rencana Anda. Kami akan membantu merangkai sisanya.' }}</p><RouterLink class="button button-light" :to="section('cta')?.cta_url || '/kontak'">{{ section('cta')?.cta_label || 'Mulai percakapan' }} <ArrowRight :size="16" /></RouterLink></div></section>
 
     <section v-for="customSection in customSections" :key="customSection.id" class="section section-paper custom-home-section" :style="{ order: customSection.sort_order }">
-      <div class="container" :class="{ 'custom-home-content-with-image': customSection.image_url }">
-        <img v-if="customSection.image_url" class="custom-home-image" :src="customSection.image_url" :alt="customSection.title" loading="lazy">
-        <div class="custom-home-copy">
-          <span class="eyebrow">INFORMASI</span>
-          <h2>{{ customSection.title }}</h2>
-          <p v-if="customSection.subtitle" class="custom-home-subtitle">{{ customSection.subtitle }}</p>
+      <div class="container custom-home-builder">
+        <h2 class="custom-home-section-title">{{ customSection.title }}</h2>
+        <div v-for="(row, rowIndex) in customSection.content_blocks || []" :key="row.id || rowIndex" class="custom-home-row">
+          <div v-for="(column, columnIndex) in row.columns || []" :key="column.id || columnIndex" class="custom-home-column" :style="{ gridColumn: `span ${Math.max(1, Math.min(12, Number(column.width) || 12))}` }">
+            <template v-for="(block, blockIndex) in column.blocks || []" :key="block.id || blockIndex">
+              <component :is="block.level === 4 ? 'h4' : 'h3'" v-if="block.type === 'heading' && block.text" class="custom-home-block-heading">{{ block.text }}</component>
+              <p v-else-if="block.type === 'text' && block.text" :class="{ 'custom-home-lead': block.lead }">{{ block.text }}</p>
+              <img v-else-if="block.type === 'image' && block.image_url" class="custom-home-block-image" :src="block.image_url" :alt="block.alt || customSection.title" loading="lazy">
+              <blockquote v-else-if="block.type === 'quote' && block.text" class="custom-home-quote">{{ block.text }}</blockquote>
+              <a v-else-if="block.type === 'button' && block.label" class="button button-outline custom-home-block-button" :href="safeLandingUrl(block.url)" :target="isExternalLandingUrl(block.url) ? '_blank' : undefined" :rel="isExternalLandingUrl(block.url) ? 'noreferrer' : undefined">{{ block.label }} <ArrowRight :size="15" /></a>
+            </template>
+          </div>
+        </div>
+        <div v-if="!customSection.content_blocks?.length" class="custom-home-legacy">
+          <p v-if="customSection.subtitle" class="custom-home-lead">{{ customSection.subtitle }}</p>
           <p v-if="customSection.body">{{ customSection.body }}</p>
-          <RouterLink v-if="customSection.cta_label && customSection.cta_url" class="button button-outline" :to="customSection.cta_url">{{ customSection.cta_label }} <ArrowRight :size="15" /></RouterLink>
+          <img v-if="customSection.image_url" class="custom-home-block-image" :src="customSection.image_url" :alt="customSection.title" loading="lazy">
+          <a v-if="customSection.cta_label" class="button button-outline custom-home-block-button" :href="safeLandingUrl(customSection.cta_url)">{{ customSection.cta_label }} <ArrowRight :size="15" /></a>
         </div>
       </div>
     </section>

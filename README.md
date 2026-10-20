@@ -38,7 +38,14 @@ Website katalog layanan event dan wedding dengan dashboard admin. Dibangun mengg
 │   │   ├── 202610160002_event_booking_fields.sql
 │   │   ├── 202610160003_role_permissions.sql
 │   │   ├── 202610160004_local_image_assets.sql
-│   │   └── 202610160005_school_event_focus.sql
+│   │   ├── 202610160005_school_event_focus.sql
+│   │   ├── 202610160006_booking_workflow_validation.sql
+│   │   ├── 202610200007_map_location_setting.sql
+│   │   ├── 202610200008_landing_section_layout.sql
+│   │   ├── 202610200009_landing_content_builder.sql
+│   │   ├── 202610200010_booking_event_types.sql
+│   │   ├── 202610200011_package_event_types.sql
+│   │   └── 202610200012_event_type_service_mapping.sql
 │   └── seed.sql
 ├── .env.example
 └── vite.config.js
@@ -50,7 +57,7 @@ Website katalog layanan event dan wedding dengan dashboard admin. Dibangun mengg
 | --- | --- |
 | `categories` | Kategori Wedding, Event, Graduation, Organizing, Yearbook |
 | `services` | Detail layanan, kategori, foto, SEO, publikasi |
-| `packages` | Harga, isi, status publikasi, urutan paket |
+| `packages` | Harga, isi, status publikasi, urutan paket, dan jenis acara yang dilayani |
 | `package_items` | Item yang termasuk di dalam paket |
 | `addons` | Layanan tambahan yang dapat dipilih |
 | `portfolios` | Cerita portofolio dan cover |
@@ -62,7 +69,9 @@ Website katalog layanan event dan wedding dengan dashboard admin. Dibangun mengg
 | `inquiries` | Pesan dan detail booking calon klien/instansi, paket, add-on, status, catatan internal |
 | `price_list` | Baris daftar harga publik terpisah bila diperlukan |
 | `site_settings` | Brand, nomor WhatsApp, tema, sosial, metadata |
-| `landing_sections` | Konten, status tampil, urutan section landing |
+| `landing_sections` | Konten, status tampil, urutan bagian, serta susunan baris/kolom dan blok halaman utama |
+| `event_types` | Pilihan jenis acara booking berdasarkan tipe pemesan |
+| `event_type_services` | Layanan yang tersedia untuk setiap jenis acara |
 | `profiles` | Profil Auth dengan role `super_admin` atau `editor` |
 
 Seluruh tabel mengaktifkan RLS. Konten publik hanya membaca record yang dipublikasikan (atau section yang aktif); pengunjung boleh mengirim inquiry tetapi tidak membaca atau mengubah inquiry. Fungsi pemeriksa role memakai `SECURITY DEFINER` agar pemeriksaan role tidak menimbulkan rekursi RLS.
@@ -82,7 +91,7 @@ Seluruh tabel mengaktifkan RLS. Konten publik hanya membaca record yang dipublik
 | Mengubah pengaturan situs | Tidak | Ya |
 | Melihat daftar akun dan mengubah role | Tidak | Ya |
 
-Di menu **Halaman utama**, admin dapat menambahkan bagian konten baru tanpa mengisi kode atau slug. Bagian tambahan otomatis tampil di beranda dan dapat diurutkan, disembunyikan, atau dihapus. Di formulir **Paket & harga**, isi paket dan add-on dikelola lewat baris input dengan tombol tambah/hapus, bukan format array atau teks khusus.
+Di menu **Halaman utama**, admin dapat menambahkan bagian konten baru tanpa mengisi kode atau slug. Editor bagian menyediakan baris dan kolom yang dapat ditambah, dihapus, diubah lebar, serta diurutkan. Setiap kolom dapat diisi elemen judul, teks, gambar, tombol, atau kutipan; susunan otomatis menjadi satu kolom pada layar ponsel. Jenis acara tambahan booking dapat dikelola di menu **Jenis acara booking**, dengan pilihan terpisah untuk pemesan instansi/organisasi dan personal serta daftar layanan yang sesuai. Satu jenis acara dapat dihubungkan ke beberapa layanan, misalnya Perpisahan & Wisuda ke layanan wisuda sekolah dan produksi foto/video. Pelanggan memilih jenis acara, lalu layanan yang sesuai, baru paket yang cocok. Saat membuat paket di **Paket & harga**, admin wajib memilih jenis acara dan layanan yang telah dihubungkan; pelanggan hanya akan melihat paket untuk pasangan jenis acara-layanan tersebut. Di formulir paket, isi paket dan add-on dikelola lewat baris input dengan tombol tambah/hapus, bukan format array atau teks khusus.
 
 Pembatasan diterapkan di dashboard **dan** RLS/database, jadi menyembunyikan menu bukan satu-satunya kontrol. Editor hanya dapat mengubah status dan catatan inquiry; perubahan kolom booking lain ditolak oleh trigger database. Editor tidak dapat menghapus konten utama. Pengelolaan akun dilakukan di menu **Akun & hak akses** oleh super admin; akun Supabase Auth tetap dibuat/diundang melalui Supabase Dashboard. Sistem mencegah penghapusan atau penurunan role super admin terakhir.
 
@@ -101,7 +110,7 @@ Tanpa konfigurasi Supabase situs berjalan memakai data demo. Inquiry preview dis
 
 1. Buat proyek Supabase, lalu salin `.env.example` menjadi `.env.local`.
 2. Isi `VITE_SUPABASE_URL` dengan **Project URL dasar** (contoh `https://project-ref.supabase.co`), dan `VITE_SUPABASE_ANON_KEY` dari **Project Settings → API**. Jangan isi URL dengan `/rest/v1` dan jangan pernah menaruh `service_role` key di frontend. Client menghapus akhiran `/rest/v1` jika URL tersebut tidak sengaja ikut disalin.
-3. Jalankan kelima migration dalam urutan nama dan seed melalui Supabase CLI dari direktori proyek:
+3. Jalankan kedua belas migration dalam urutan nama dan seed melalui Supabase CLI dari direktori proyek:
 
    ```bash
    npx supabase login
@@ -110,14 +119,14 @@ Tanpa konfigurasi Supabase situs berjalan memakai data demo. Inquiry preview dis
    npx supabase db execute --file supabase/seed.sql
    ```
 
-   Migration pertama membuat tabel dan RLS, migration kedua menambahkan detail booking, migration ketiga membatasi hak akses editor/super admin, migration keempat mengganti foto contoh di database dengan aset lokal, dan migration kelima memprioritaskan acara sekolah/perpisahan pada konten contoh. Migration kelima hanya mengganti teks bawaan yang belum dikustomisasi; urutan layanan dan paket contoh disusun ulang untuk menonjolkan wisuda, yearbook, dan acara sekolah. Untuk menjalankan Supabase lokal dari awal (perintah ini membangun ulang database lokal):
+   Migration pertama membuat tabel dan RLS, migration kedua menambahkan detail booking, migration ketiga membatasi hak akses editor/super admin, migration keempat mengganti foto contoh di database dengan aset lokal, migration kelima memprioritaskan acara sekolah/perpisahan pada konten contoh, migration keenam menambahkan status booking dibatalkan serta validasi booking, migration ketujuh menambahkan pengaturan lokasi peta dengan nilai awal Tasikmalaya, migration kedelapan menambahkan kolom tata letak lama, migration kesembilan menyediakan penyimpanan konten editor baris/kolom, migration kesepuluh menyediakan jenis acara booking, migration kesebelas menghubungkan paket dengan jenis acara, dan migration kedua belas menyediakan pemetaan beberapa layanan untuk satu jenis acara beserta validasinya di database. Lokasi peta dapat diubah super admin melalui menu **Pengaturan situs**. Bagian beranda tambahan dapat disusun melalui editor baris/kolom di menu **Halaman utama**. Hubungan jenis acara dan layanan diatur melalui daftar centang menu **Jenis acara booking**, sedangkan paket menentukan satu pasangan jenis acara dan layanan. Migration kelima hanya mengganti teks bawaan yang belum dikustomisasi; urutan layanan dan paket contoh disusun ulang untuk menonjolkan wisuda, yearbook, dan acara sekolah. Untuk menjalankan Supabase lokal dari awal (perintah ini membangun ulang database lokal):
 
    ```bash
    npx supabase start
    npx supabase db reset
    ```
 
-   Jika Supabase CLI belum tersedia, buka SQL Editor dashboard dan jalankan seluruh file di `supabase/migrations/` secara berurutan, kemudian jalankan `supabase/seed.sql`. Pada database existing yang sudah menerapkan migration 001–004, jalankan migration 005 untuk memperbarui urutan dan teks konten bawaan.
+   Jika Supabase CLI belum tersedia, buka SQL Editor dashboard dan jalankan seluruh file di `supabase/migrations/` secara berurutan, kemudian jalankan `supabase/seed.sql`. Database existing perlu menjalankan migration 006 untuk validasi booking, migration 007 untuk lokasi peta, migration 008–009 untuk editor konten beranda, migration 010 untuk menu jenis acara, migration 011 untuk paket per jenis acara, dan migration 012 untuk pemetaan jenis acara ke beberapa layanan.
 4. Buat akun super admin pertama melalui **Authentication → Users → Add user**. Trigger akan membuat profil dengan role `editor`.
 5. Untuk menjadikan akun pertama sebagai super admin, jalankan SQL berikut di SQL Editor dengan email akun yang Anda buat:
 

@@ -6,6 +6,22 @@ insert into public.categories (name, slug, description, icon, sort_order, is_pub
   ('Wedding', 'wedding', 'Perayaan personal yang dirancang dengan penuh perhatian.', 'Heart', 5, true)
 on conflict (slug) do update set name = excluded.name, description = excluded.description, icon = excluded.icon, sort_order = excluded.sort_order, is_published = excluded.is_published;
 
+insert into public.event_types (name, booking_type, sort_order, is_published) values
+  ('Perpisahan & Wisuda', 'organization', 1, true),
+  ('Yearbook', 'organization', 2, true),
+  ('Event & Corporate', 'organization', 3, true),
+  ('Event Organizer', 'organization', 4, true),
+  ('Wedding', 'personal', 1, true),
+  ('Acara perusahaan', 'organization', 5, true),
+  ('Gathering perusahaan', 'organization', 6, true),
+  ('Acara komunitas', 'organization', 7, true),
+  ('Lainnya', 'organization', 8, true),
+  ('Ulang tahun', 'personal', 2, true),
+  ('Perayaan keluarga', 'personal', 3, true),
+  ('Gathering pribadi', 'personal', 4, true),
+  ('Lainnya', 'personal', 5, true)
+on conflict (booking_type, name) do update set is_published = excluded.is_published;
+
 insert into public.services (category_id, title, slug, summary, description, image_url, featured, sort_order, is_published)
 select c.id, v.title, v.slug, v.summary, v.description, v.image_url, v.featured, v.sort_order, true
 from (values
@@ -19,17 +35,63 @@ from (values
 join public.categories c on c.slug = v.category_slug
 on conflict (slug) do update set category_id = excluded.category_id, title = excluded.title, summary = excluded.summary, description = excluded.description, image_url = excluded.image_url, featured = excluded.featured, sort_order = excluded.sort_order, is_published = true;
 
-insert into public.packages (service_id, name, slug, description, price, price_label, inclusions, featured, sort_order, is_published)
-select s.id, v.name, v.slug, v.description, v.price, v.price_label, v.inclusions, v.featured, v.sort_order, true
+with service_mapping(event_name, booking_type, service_slug) as (
+  values
+    ('Perpisahan & Wisuda', 'organization', 'graduation-celebration'),
+    ('Perpisahan & Wisuda', 'organization', 'visual-production'),
+    ('Yearbook', 'organization', 'yearbook-story'),
+    ('Yearbook', 'organization', 'visual-production'),
+    ('Event & Corporate', 'organization', 'corporate-event'),
+    ('Event & Corporate', 'organization', 'visual-production'),
+    ('Event Organizer', 'organization', 'event-organizer'),
+    ('Event Organizer', 'organization', 'corporate-event'),
+    ('Event Organizer', 'organization', 'visual-production'),
+    ('Acara perusahaan', 'organization', 'corporate-event'),
+    ('Acara perusahaan', 'organization', 'event-organizer'),
+    ('Acara perusahaan', 'organization', 'visual-production'),
+    ('Gathering perusahaan', 'organization', 'corporate-event'),
+    ('Gathering perusahaan', 'organization', 'event-organizer'),
+    ('Gathering perusahaan', 'organization', 'visual-production'),
+    ('Acara komunitas', 'organization', 'corporate-event'),
+    ('Acara komunitas', 'organization', 'event-organizer'),
+    ('Acara komunitas', 'organization', 'visual-production'),
+    ('Lainnya', 'organization', 'graduation-celebration'),
+    ('Lainnya', 'organization', 'yearbook-story'),
+    ('Lainnya', 'organization', 'corporate-event'),
+    ('Lainnya', 'organization', 'event-organizer'),
+    ('Lainnya', 'organization', 'visual-production'),
+    ('Wedding', 'personal', 'wedding-planning'),
+    ('Wedding', 'personal', 'visual-production'),
+    ('Ulang tahun', 'personal', 'wedding-planning'),
+    ('Ulang tahun', 'personal', 'visual-production'),
+    ('Perayaan keluarga', 'personal', 'wedding-planning'),
+    ('Perayaan keluarga', 'personal', 'visual-production'),
+    ('Gathering pribadi', 'personal', 'wedding-planning'),
+    ('Gathering pribadi', 'personal', 'visual-production'),
+    ('Lainnya', 'personal', 'wedding-planning'),
+    ('Lainnya', 'personal', 'visual-production')
+)
+insert into public.event_type_services (event_type_id, service_id)
+select et.id, s.id
+from service_mapping m
+join public.event_types et on et.name = m.event_name and et.booking_type = m.booking_type
+join public.services s on s.slug = m.service_slug
+on conflict do nothing;
+
+insert into public.packages (service_id, event_type_id, name, slug, description, price, price_label, inclusions, featured, sort_order, is_published)
+select s.id, et.id, v.name, v.slug, v.description, v.price, v.price_label, v.inclusions, v.featured, v.sort_order, true
 from (values
-  ('graduation-celebration', 'Perpisahan Sekolah', 'school-celebration', 'Paket acara kelulusan yang bisa disesuaikan dengan kebutuhan sekolah.', 18500000, 'Mulai dari', array['Desain panggung dan backdrop','MC dan rundown acara','Sound system standar','Dokumentasi foto acara']::text[], true, 1),
-  ('yearbook-story', 'Yearbook Satu Angkatan', 'yearbook-classic', 'Dari sesi foto sampai buku kenangan siap dibagikan.', 185000, 'Mulai dari / buku', array['Desain layout eksklusif','Sesi foto kelompok','Hard cover premium','Minimal 100 eksemplar']::text[], true, 2),
-  ('corporate-event', 'Signature Event', 'signature-corporate', 'Produksi acara sekolah, komunitas, atau perusahaan.', 45000000, 'Mulai dari', array['Konsep dan creative direction','Manajemen venue dan vendor','Produksi panggung dan visual','Koordinator hari-H']::text[], true, 3),
-  ('event-organizer', 'Full Event Planning', 'full-event-planning', 'Perencanaan lengkap tanpa repot.', 32000000, 'Mulai dari', array['Konsultasi dan perencanaan','Koordinasi vendor','Rundown dan produksi','Tim pelaksana di lokasi']::text[], false, 4),
-  ('wedding-planning', 'Intimate Wedding', 'intimate-wedding', 'Perayaan hangat hingga 150 tamu.', 28500000, 'Mulai dari', array['Wedding planner & coordinator','Dekorasi area akad dan resepsi','Master of ceremony','Dokumentasi foto 6 jam']::text[], false, 5)
-) as v(service_slug, name, slug, description, price, price_label, inclusions, featured, sort_order)
+  ('graduation-celebration', 'Perpisahan & Wisuda', 'Perpisahan Sekolah', 'school-celebration', 'Paket acara kelulusan yang bisa disesuaikan dengan kebutuhan sekolah.', 18500000, 'Mulai dari', array['Desain panggung dan backdrop','MC dan rundown acara','Sound system standar','Dokumentasi foto acara']::text[], true, 1),
+  ('yearbook-story', 'Yearbook', 'Yearbook Satu Angkatan', 'yearbook-classic', 'Dari sesi foto sampai buku kenangan siap dibagikan.', 185000, 'Mulai dari / buku', array['Desain layout eksklusif','Sesi foto kelompok','Hard cover premium','Minimal 100 eksemplar']::text[], true, 2),
+  ('corporate-event', 'Event & Corporate', 'Signature Event', 'signature-corporate', 'Produksi acara sekolah, komunitas, atau perusahaan.', 45000000, 'Mulai dari', array['Konsep dan creative direction','Manajemen venue dan vendor','Produksi panggung dan visual','Koordinator hari-H']::text[], true, 3),
+  ('event-organizer', 'Event Organizer', 'Full Event Planning', 'full-event-planning', 'Perencanaan lengkap tanpa repot.', 32000000, 'Mulai dari', array['Konsultasi dan perencanaan','Koordinasi vendor','Rundown dan produksi','Tim pelaksana di lokasi']::text[], false, 4),
+  ('wedding-planning', 'Wedding', 'Intimate Wedding', 'intimate-wedding', 'Perayaan hangat hingga 150 tamu.', 28500000, 'Mulai dari', array['Wedding planner & coordinator','Dekorasi area akad dan resepsi','Master of ceremony','Dokumentasi foto 6 jam']::text[], false, 5)
+) as v(service_slug, event_type_name, name, slug, description, price, price_label, inclusions, featured, sort_order)
 join public.services s on s.slug = v.service_slug
-on conflict (slug) do update set service_id = excluded.service_id, name = excluded.name, description = excluded.description, price = excluded.price, price_label = excluded.price_label, inclusions = excluded.inclusions, featured = excluded.featured, sort_order = excluded.sort_order, is_published = true;
+join public.event_types et
+  on et.name = v.event_type_name
+  and et.booking_type = case when v.event_type_name = 'Wedding' then 'personal' else 'organization' end
+on conflict (slug) do update set service_id = excluded.service_id, event_type_id = excluded.event_type_id, name = excluded.name, description = excluded.description, price = excluded.price, price_label = excluded.price_label, inclusions = excluded.inclusions, featured = excluded.featured, sort_order = excluded.sort_order, is_published = true;
 
 insert into public.package_items (package_id, name, sort_order)
 select p.id, item.name, item.ordinality::integer
@@ -127,5 +189,6 @@ insert into public.site_settings (key, value, is_public, sort_order) values
   ('whatsapp', '{"whatsapp":"6281234567890"}', true, 2),
   ('instagram', '{"instagram":"@abadinanjaya"}', true, 3),
   ('tagline', '{"tagline":"Merayakan setiap cerita"}', true, 4),
-  ('seo', '{"seo_title":"Abadi nan Jaya — Merayakan setiap cerita","seo_description":"Partner terpercaya untuk momen istimewa, acara korporat, wisuda, dan yearbook."}', true, 5)
+  ('seo', '{"seo_title":"Abadi nan Jaya — Merayakan setiap cerita","seo_description":"Partner terpercaya untuk momen istimewa, acara korporat, wisuda, dan yearbook."}', true, 5),
+  ('map_location', '{"map_location":"Tasikmalaya, Jawa Barat"}', true, 6)
 on conflict (key) do update set value = excluded.value, is_public = excluded.is_public, sort_order = excluded.sort_order;
