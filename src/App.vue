@@ -24,12 +24,16 @@ onMounted(() => site.loadPublicContent().catch((error) => console.error(error)))
 <template>
   <div class="min-h-screen">
     <SiteHeader v-if="!isAdmin" />
-    <main>
+    <main v-motion>
       <div v-if="site.error && !isAdmin" class="site-error" role="alert">
         <span>Konten situs belum dapat dimuat: {{ site.error }}</span>
         <button type="button" @click="site.loadPublicContent(true).catch((error) => console.error(error))">Coba lagi</button>
       </div>
-      <RouterView />
+      <RouterView v-slot="{ Component, route }">
+        <Transition name="route" mode="out-in">
+          <component :is="Component" :key="route.path" />
+        </Transition>
+      </RouterView>
     </main>
     <SiteFooter v-if="!isAdmin" />
     <ToastHost />

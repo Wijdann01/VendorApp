@@ -1,8 +1,11 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, BookOpen, CalendarDays, ChevronDown, CircleHelp, FileImage, LayoutDashboard, LogOut, Menu, MessageSquareText, Package, Pencil, Plus, Search, Settings, ShieldCheck, Trash2, Users, X } from '@lucide/vue'
+import Swal from 'sweetalert2'
+import 'sweetalert2/dist/sweetalert2.min.css'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase, supabaseConfigured } from '../lib/supabase'
+import { toLocalIndonesianPhone, toWhatsAppPhone } from '../lib/phone'
 import { demoCategories, demoFaqs, demoLandingSections, demoPackages, demoServices, demoTestimonials, formatPrice, localImages } from '../data/demo'
 import { useToast } from '../composables/useToast'
 import { useSiteStore } from '../stores/site'
@@ -22,12 +25,21 @@ const accountMenuOpen = ref(false)
 const loading = ref(false)
 const query = ref('')
 const filterStatus = ref('semua')
+const filterDay = ref('semua')
+const filterMonth = ref('semua')
+const filterYear = ref('semua')
+const selectionMode = ref(false)
+const selectedInquiryIds = ref([])
+const deletingInquiries = ref(false)
 const inquiries = ref([])
 const counts = ref({ inquiries: 0, newInquiries: 0, newBookings: 0, services: 0, portfolios: 0, packages: 0 })
 const dataSets = ref({ services: [], categories: [], packages: [], portfolios: [], testimonials: [], faqs: [], contacts: [], clients: [], price_list: [], landing_sections: [], event_types: [], site_settings: [], profiles: [] })
 const serviceCounts = ref([])
 const notice = ref('')
 const editing = ref(null)
+const formErrors = ref({})
+const accountErrors = ref({})
+const mapLocationErrors = ref({})
 const saving = ref(false)
 const form = ref({})
 const pendingImages = ref({})
@@ -72,9 +84,32 @@ const allMenuItems = [
 const menu = computed(() => allMenuItems.filter((item) => !item.superAdminOnly || isSuperAdmin.value))
 const isBookingInquiry = (item) => Boolean(item.service_id || item.package_id || item.organization_name || item.event_city || item.event_location || item.selected_addons?.length)
 const consultationInquiries = computed(() => inquiries.value.filter((item) => !isBookingInquiry(item)))
-const filteredInquiries = computed(() => consultationInquiries.value.filter((item) => (filterStatus.value === 'semua' || item.status === filterStatus.value) && `${item.name} ${item.email} ${item.event_type} ${item.phone}`.toLowerCase().includes(query.value.toLowerCase())))
+const receivedYears = computed(() => [...new Set(inquiries.value.map((item) => item.created_at ? new Date(item.created_at).getFullYear() : null).filter(Boolean))].sort((a, b) => b - a))
+const monthOptions = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+const matchesReceivedDate = (item) => {
+  if (!item.created_at) return filterDay.value === 'semua' && filterMonth.value === 'semua' && filterYear.value === 'semua'
+  const received = new Date(item.created_at)
+  return (filterDay.value === 'semua' || received.getDate() === Number(filterDay.value))
+    && (filterMonth.value === 'semua' || received.getMonth() + 1 === Number(filterMonth.value))
+    && (filterYear.value === 'semua' || received.getFullYear() === Number(filterYear.value))
+}
+const filteredInquiries = computed(() => consultationInquiries.value.filter((item) => (filterStatus.value === 'semua' || item.status === filterStatus.value) && matchesReceivedDate(item) && `${item.name} ${item.email} ${item.event_type} ${toLocalIndonesianPhone(item.phone)}`.toLowerCase().includes(query.value.toLowerCase())))
 const bookingInquiries = computed(() => inquiries.value.filter(isBookingInquiry))
-const filteredBookings = computed(() => bookingInquiries.value.filter((item) => (filterStatus.value === 'semua' || item.status === filterStatus.value) && `${item.name} ${item.email} ${item.event_type} ${item.phone} ${item.organization_name || ''} ${item.event_city || ''}`.toLowerCase().includes(query.value.toLowerCase())))
+const filteredBookings = computed(() => bookingInquiries.value.filter((item) => (filterStatus.value === 'semua' || item.status === filterStatus.value) && matchesReceivedDate(item) && `${item.name} ${item.email} ${item.event_type} ${toLocalIndonesianPhone(item.phone)} ${item.organization_name || ''} ${item.event_city || ''}`.toLowerCase().includes(query.value.toLowerCase())))
+const visibleInquiryRows = computed(() => active.value === 'bookings' ? filteredBookings.value : filteredInquiries.value)
+const activeInquiryTypeRows = computed(() => active.value === 'bookings' ? bookingInquiries.value : consultationInquiries.value)
+const visibleSelectedIds = computed(() => visibleInquiryRows.value.filter((item) => selectedInquiryIds.value.includes(item.id)).map((item) => item.id))
+const allVisibleSelected = computed(() => visibleInquiryRows.value.length > 0 && visibleSelectedIds.value.length === visibleInquiryRows.value.length)
+const allTypeSelected = computed(() => activeInquiryTypeRows.value.length > 0 && activeInquiryTypeRows.value.every((item) => selectedInquiryIds.value.includes(item.id)))
+const hasDateFilter = computed(() => filterDay.value !== 'semua' || filterMonth.value !== 'semua' || filterYear.value !== 'semua')
+const dateFilterLabel = computed(() => {
+  const parts = [
+    filterDay.value === 'semua' ? '' : String(filterDay.value).padStart(2, '0'),
+    filterMonth.value === 'semua' ? '' : monthOptions[Number(filterMonth.value) - 1],
+    filterYear.value === 'semua' ? '' : filterYear.value,
+  ].filter(Boolean)
+  return parts.length ? parts.join(' ') : 'Semua tanggal'
+})
 const upcomingBookings = computed(() => bookingInquiries.value.filter((item) => item.event_date && item.event_date >= new Date().toISOString().slice(0, 10) && !['selesai', 'dibatalkan'].includes(item.status)).length)
 const organizationBookings = computed(() => bookingInquiries.value.filter((item) => item.booking_type === 'organization' || item.organization_name).length)
 const actionableBookings = computed(() => bookingInquiries.value.filter((item) => !['selesai', 'dibatalkan'].includes(item.status)))
@@ -100,11 +135,119 @@ const summaryItems = computed(() => menu.value
     return { ...item, value, detail }
   }))
 const currentRows = computed(() => active.value === 'inquiries' ? filteredInquiries.value : active.value === 'bookings' ? filteredBookings.value : dataSets.value[active.value] || [])
+const sortableTables = new Set(['services', 'categories', 'packages', 'portfolios', 'testimonials', 'faqs', 'contacts', 'clients', 'landing_sections', 'site_settings', 'price_list', 'event_types'])
+const nextSortOrder = (table) => Math.max(0, ...(dataSets.value[table] || []).map((item, index) => {
+  const order = Number(item.sort_order)
+  return item.sort_order !== null && item.sort_order !== '' && Number.isFinite(order) ? order : index + 1
+})) + 1
+const fieldsForTable = (table) => ({
+  services: ['title', 'category_id', 'summary', 'is_published'],
+  categories: ['name', 'slug', 'description'],
+  packages: ['name', 'event_type_id', 'service_id', 'price', 'is_published'],
+  portfolios: ['title', 'category', 'is_published'],
+  faqs: ['question', 'answer', 'is_published'],
+  landing_sections: ['title', 'subtitle', 'is_enabled'],
+  contacts: ['name', 'division', 'phone'],
+  clients: ['name', 'website_url', 'is_published'],
+  event_types: ['name', 'booking_type', 'is_published'],
+})[table] || ['name', 'role', 'is_published']
 const headings = { dashboard: 'Selamat datang kembali', inquiries: 'Pertanyaan masuk', bookings: 'Ringkasan booking', event_types: 'Jenis acara booking', services: 'Layanan & kategori', categories: 'Kategori layanan', packages: 'Paket & daftar harga', portfolios: 'Portofolio', testimonials: 'Testimoni', clients: 'Klien & partner', faqs: 'Pertanyaan umum', contacts: 'Kontak person', landing_sections: 'Konten halaman utama', site_settings: 'Pengaturan situs', profiles: 'Akun & hak akses' }
 const dateLabel = (date) => date ? new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(date)) : '—'
 const bookingContactName = (item) => item.booking_type === 'organization' ? item.organization_name || 'Instansi / sekolah' : item.name || 'Pelanggan personal'
-const whatsappLink = (item) => `https://wa.me/${String(item.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Halo ${item.name}, kami menindaklanjuti permintaan ${item.event_type || 'acara'}${item.event_date ? ` pada ${dateLabel(item.event_date)}` : ''}.`)}`
+const whatsappLink = (item) => `https://wa.me/${toWhatsAppPhone(item.phone)}?text=${encodeURIComponent(`Halo ${item.name}, kami menindaklanjuti permintaan ${item.event_type || 'acara'}${item.event_date ? ` pada ${dateLabel(item.event_date)}` : ''}.`)}`
 const hasBookingConflict = (item) => Boolean(item.event_date && bookingInquiries.value.some((booking) => booking.id !== item.id && booking.event_date === item.event_date && booking.event_type === item.event_type && !['selesai', 'dibatalkan'].includes(booking.status)))
+async function showDateFilter() {
+  const dayOptions = Array.from({ length: 31 }, (_, index) => `<option value="${index + 1}" ${Number(filterDay.value) === index + 1 ? 'selected' : ''}>${index + 1}</option>`).join('')
+  const monthSelectOptions = monthOptions.map((month, index) => `<option value="${index + 1}" ${Number(filterMonth.value) === index + 1 ? 'selected' : ''}>${month}</option>`).join('')
+  const yearOptions = receivedYears.value.map((year) => `<option value="${year}" ${Number(filterYear.value) === year ? 'selected' : ''}>${year}</option>`).join('')
+  const result = await Swal.fire({
+    title: 'Filter tanggal diterima',
+    html: `<div class="admin-date-filter"><label><span>Tanggal</span><select id="filter-day"><option value="semua">Semua</option>${dayOptions}</select></label><label><span>Bulan</span><select id="filter-month"><option value="semua">Semua</option>${monthSelectOptions}</select></label><label><span>Tahun</span><select id="filter-year"><option value="semua">Semua</option>${yearOptions}</select></label></div>`,
+    customClass: { popup: 'admin-swal-popup', confirmButton: 'admin-swal-confirm', cancelButton: 'admin-swal-cancel', denyButton: 'admin-swal-deny' },
+    showCancelButton: true,
+    showDenyButton: true,
+    confirmButtonText: 'Terapkan filter',
+    denyButtonText: 'Reset filter',
+    cancelButtonText: 'Batal',
+    buttonsStyling: false,
+    preConfirm: () => ({
+      day: Swal.getPopup().querySelector('#filter-day').value,
+      month: Swal.getPopup().querySelector('#filter-month').value,
+      year: Swal.getPopup().querySelector('#filter-year').value,
+    }),
+  })
+  if (result.isConfirmed) {
+    filterDay.value = result.value.day
+    filterMonth.value = result.value.month
+    filterYear.value = result.value.year
+  } else if (result.isDenied) {
+    filterDay.value = 'semua'
+    filterMonth.value = 'semua'
+    filterYear.value = 'semua'
+  }
+}
+function toggleSelectionMode() {
+  selectionMode.value = !selectionMode.value
+  selectedInquiryIds.value = []
+}
+function toggleInquirySelection(id) {
+  selectedInquiryIds.value = selectedInquiryIds.value.includes(id)
+    ? selectedInquiryIds.value.filter((selectedId) => selectedId !== id)
+    : [...selectedInquiryIds.value, id]
+}
+function toggleSelectAllVisible() {
+  const visibleIds = visibleInquiryRows.value.map((item) => item.id)
+  selectedInquiryIds.value = allVisibleSelected.value
+    ? selectedInquiryIds.value.filter((id) => !visibleIds.includes(id))
+    : [...new Set([...selectedInquiryIds.value, ...visibleIds])]
+}
+function selectAllInquiries() {
+  selectedInquiryIds.value = [...new Set([...selectedInquiryIds.value, ...activeInquiryTypeRows.value.map((item) => item.id)])]
+}
+async function deleteInquiryRows(ids, scopeLabel) {
+  if (!isSuperAdmin.value) {
+    notify('Hanya super admin yang dapat menghapus booking atau pertanyaan.', 'error')
+    return
+  }
+  if (!ids.length || deletingInquiries.value) return
+  const result = await Swal.fire({
+    title: `Hapus ${scopeLabel}?`,
+    text: `${ids.length} data akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.`,
+    icon: 'warning',
+    customClass: { popup: 'admin-swal-popup', confirmButton: 'admin-swal-confirm admin-swal-danger', cancelButton: 'admin-swal-cancel' },
+    showCancelButton: true,
+    confirmButtonText: 'Ya, hapus data',
+    cancelButtonText: 'Batal',
+    buttonsStyling: false,
+    reverseButtons: true,
+  })
+  if (!result.isConfirmed) return
+  deletingInquiries.value = true
+  try {
+    if (isLocalDemo) {
+      const remaining = inquiries.value.filter((item) => !ids.includes(item.id))
+      localStorage.setItem('anaj-demo-inquiries', JSON.stringify(remaining))
+    } else {
+      const { error } = await supabase.from('inquiries').delete().in('id', ids)
+      if (error) throw error
+    }
+    selectedInquiryIds.value = []
+    selectionMode.value = false
+    notify(`${ids.length} data berhasil dihapus.`)
+    await loadDashboard()
+  } catch (error) {
+    notify(`Tidak dapat menghapus data: ${error.message}`, 'error')
+  } finally {
+    deletingInquiries.value = false
+  }
+}
+function deleteSelectedInquiries() {
+  return deleteInquiryRows(visibleSelectedIds.value, `${visibleSelectedIds.value.length} data terpilih`)
+}
+function deleteAllInquiries() {
+  const typeLabel = active.value === 'bookings' ? 'semua booking' : 'semua pertanyaan'
+  return deleteInquiryRows(activeInquiryTypeRows.value.map((item) => item.id), typeLabel)
+}
 const setPage = (id) => {
   if (id === 'site_settings' || id === 'profiles') {
     if (!isSuperAdmin.value) {
@@ -118,6 +261,11 @@ const setPage = (id) => {
   editing.value = null
   accountEditing.value = null
   filterStatus.value = 'semua'
+  filterDay.value = 'semua'
+  filterMonth.value = 'semua'
+  filterYear.value = 'semua'
+  selectionMode.value = false
+  selectedInquiryIds.value = []
   if (id === 'profiles') loadAdminAccounts()
 }
 
@@ -210,7 +358,7 @@ function popularCategories(rows, services = demoServices, categories = demoCateg
 function exportCsv() {
   const rows = [['Nama PIC', 'Email', 'WhatsApp', 'Tipe pemesan', 'Instansi', 'Jabatan PIC', 'Paket ID', 'Jenis acara', 'Tanggal acara', 'Waktu', 'Jumlah tamu/peserta', 'Venue/alamat', 'Kota', 'Tipe venue', 'Anggaran min', 'Anggaran max', 'Tema', 'Add-on/peralatan', 'Kebutuhan khusus', 'Status', 'Catatan internal', 'Pesan', 'Diterima']]
   const exportRows = active.value === 'bookings' ? filteredBookings.value : filteredInquiries.value
-  for (const item of exportRows) rows.push([item.name, item.email, item.phone, item.booking_type, item.organization_name, item.contact_position, item.package_id, item.event_type, item.event_date, [item.event_start_time, item.event_end_time].filter(Boolean).join(' - '), item.guest_count, item.event_location, item.event_city, item.venue_type, item.budget_min, item.budget_max, item.event_theme, (item.selected_addons || []).map((addon) => `${addon.name} x ${addon.quantity || 1}`).join('; '), item.special_requirements, item.status, item.notes, item.message, item.created_at])
+  for (const item of exportRows) rows.push([item.name, item.email, toLocalIndonesianPhone(item.phone), item.booking_type, item.organization_name, item.contact_position, item.package_id, item.event_type, item.event_date, [item.event_start_time, item.event_end_time].filter(Boolean).join(' - '), item.guest_count, item.event_location, item.event_city, item.venue_type, item.budget_min, item.budget_max, item.event_theme, (item.selected_addons || []).map((addon) => `${addon.name} x ${addon.quantity || 1}`).join('; '), item.special_requirements, item.status, item.notes, item.message, item.created_at])
   const csv = `\uFEFF${rows.map((row) => row.map((cell) => {
     const value = String(cell ?? '')
     const safeValue = typeof cell === 'string' && /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value
@@ -249,6 +397,7 @@ async function deleteRow(item) {
 }
 function editRow(item) {
   clearPendingImages()
+  formErrors.value = {}
   editing.value = item.id || `new-${Date.now()}`
   const updated = { ...item }
   if (active.value === 'event_types') updated.service_ids = [...(item.service_ids || item.event_type_services?.map((relation) => relation.service_id) || [])]
@@ -269,22 +418,64 @@ function editRow(item) {
 }
 function newRow() {
   clearPendingImages()
+  formErrors.value = {}
   editing.value = 'new'
-  const nextLandingOrder = Math.max(0, ...dataSets.value.landing_sections.map((section) => Number(section.sort_order) || 0)) + 1
+  const sortOrder = sortableTables.has(active.value) ? nextSortOrder(active.value) : undefined
   const templates = {
-    services: { title: '', slug: '', summary: '', description: '', category_id: '', image_url: localImages.production, featured: false, is_published: false },
-    categories: { name: '', slug: '', description: '', icon: '', sort_order: 0, is_published: false },
-    packages: { name: '', slug: '', description: '', event_type_id: '', service_id: '', price: 0, price_label: 'Mulai dari', inclusions: [], addons: [], is_published: false },
-    event_types: { name: '', booking_type: 'organization', sort_order: 0, is_published: true, service_ids: [] },
-    portfolios: { title: '', slug: '', category: '', category_id: '', description: '', cover_image_url: localImages.graduation, is_published: false },
-    faqs: { question: '', answer: '', sort_order: 0, is_published: false },
-    contacts: { name: '', title: '', division: '', phone: '', email: '', sort_order: 0, is_published: false },
-    testimonials: { name: '', role: '', quote: '', avatar_url: '', rating: 5, is_published: false },
-    clients: { name: '', logo_url: '', website_url: '', sort_order: 0, is_published: false },
-    landing_sections: { section_key: '', title: '', subtitle: '', body: '', image_url: '', cta_label: '', cta_url: '', content_blocks: [createLandingRow()], is_enabled: true, sort_order: nextLandingOrder },
-    site_settings: { key: '', value: '' },
+    services: { title: '', slug: '', summary: '', description: '', category_id: '', image_url: localImages.production, featured: false, is_published: false, sort_order: sortOrder },
+    categories: { name: '', slug: '', description: '', icon: '', is_published: false, sort_order: sortOrder },
+    packages: { name: '', slug: '', description: '', event_type_id: '', service_id: '', price: 0, price_label: 'Mulai dari', inclusions: [], addons: [], is_published: false, sort_order: sortOrder },
+    event_types: { name: '', booking_type: 'organization', is_published: true, service_ids: [], sort_order: sortOrder },
+    portfolios: { title: '', slug: '', category: '', category_id: '', description: '', cover_image_url: localImages.graduation, is_published: false, sort_order: sortOrder },
+    faqs: { question: '', answer: '', is_published: false, sort_order: sortOrder },
+    contacts: { name: '', title: '', division: '', phone: '', email: '', is_published: false, sort_order: sortOrder },
+    testimonials: { name: '', role: '', quote: '', avatar_url: '', rating: 5, is_published: false, sort_order: sortOrder },
+    clients: { name: '', logo_url: '', website_url: '', is_published: false, sort_order: sortOrder },
+    landing_sections: { section_key: '', title: '', subtitle: '', body: '', image_url: '', cta_label: '', cta_url: '', content_blocks: [createLandingRow()], is_enabled: true, sort_order: sortOrder },
+    site_settings: { key: '', value: '', sort_order: sortOrder },
+    price_list: { name: '', description: '', price: 0, price_label: 'Mulai dari', is_published: false, sort_order: sortOrder },
   }
   form.value = { ...(templates[active.value] || { name: '' }) }
+}
+function getRowValidationErrors(record, table) {
+  const errors = {}
+  const nameField = ['services', 'portfolios', 'landing_sections'].includes(table) ? 'title' : table === 'faqs' ? 'question' : 'name'
+  const nameLabel = table === 'services' ? 'Judul layanan' : table === 'portfolios' ? 'Judul portofolio' : table === 'event_types' ? 'Nama jenis acara' : table === 'faqs' ? 'Pertanyaan' : table === 'landing_sections' ? 'Judul bagian' : 'Nama'
+  const nameValue = record[nameField]
+  if (['services', 'categories', 'packages', 'portfolios', 'event_types', 'contacts', 'clients', 'testimonials', 'faqs', 'landing_sections', 'price_list'].includes(table)) {
+    if (typeof nameValue !== 'string' || nameValue.trim().length < 2) errors[nameField] = `${nameLabel} minimal 2 karakter.`
+    else if (nameValue.trim().length > 160) errors[nameField] = `${nameLabel} maksimal 160 karakter.`
+  }
+  if (table === 'services' && !record.category_id) errors.category_id = 'Pilih kategori layanan.'
+  if (table === 'event_types') {
+    if (!['organization', 'personal'].includes(record.booking_type)) errors.booking_type = 'Pilih tipe pemesan.'
+    if (!record.service_ids?.length) errors.service_ids = 'Pilih minimal satu layanan.'
+  }
+  if (table === 'packages') {
+    if (!record.event_type_id) errors.event_type_id = 'Pilih jenis acara.'
+    if (!record.service_id) errors.service_id = 'Pilih layanan.'
+    if (!Number.isFinite(Number(record.price)) || Number(record.price) < 0) errors.price = 'Harga harus berupa angka nol atau lebih.'
+  }
+  if (table === 'faqs') {
+    if (!record.question?.trim()) errors.question = 'Isi pertanyaan.'
+    if (!record.answer?.trim()) errors.answer = 'Isi jawaban.'
+  }
+  if (table === 'testimonials' && !record.quote?.trim()) errors.quote = 'Isi kutipan testimoni.'
+  if (table === 'site_settings') {
+    if (!record.key?.trim()) errors.key = 'Isi nama pengaturan.'
+    if (!String(record.value ?? '').trim()) errors.value = 'Isi nilai pengaturan.'
+  }
+  if (table === 'price_list' && (!Number.isFinite(Number(record.price)) || Number(record.price) < 0)) errors.price = 'Harga harus berupa angka nol atau lebih.'
+  if (record.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.email.trim())) errors.email = 'Masukkan alamat email yang valid.'
+  if (record.website_url && !/^https?:\/\/\S+$/i.test(record.website_url.trim())) errors.website_url = 'Gunakan URL lengkap yang diawali http:// atau https://.'
+  if (table === 'testimonials' && record.rating !== undefined && (!Number.isInteger(Number(record.rating)) || Number(record.rating) < 1 || Number(record.rating) > 5)) errors.rating = 'Rating harus berupa angka bulat 1–5.'
+  return errors
+}
+function validateRowField(field) {
+  if (!Object.keys(formErrors.value).length) return
+  const errors = getRowValidationErrors(form.value, active.value)
+  if (errors[field]) formErrors.value[field] = errors[field]
+  else delete formErrors.value[field]
 }
 function createLandingId() {
   return `block-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -491,10 +682,15 @@ async function uploadLandingBlockImages(record) {
 async function saveMapLocation(item) {
   if (!isSuperAdmin.value || saving.value) return
   const location = item.value.trim()
-  if (!location) {
-    notify('Isi nama kota atau alamat lokasi peta.', 'error')
+  if (!location || location.length > 160) {
+    mapLocationErrors.value[item.id] = !location
+      ? 'Isi nama kota atau alamat lokasi peta.'
+      : 'Lokasi peta maksimal 160 karakter.'
+    await nextTick()
+    document.getElementById(`map-location-${item.id}`)?.focus()
     return
   }
+  delete mapLocationErrors.value[item.id]
   saving.value = true
   try {
     if (isLocalDemo) {
@@ -521,6 +717,13 @@ async function saveRow() {
     return
   }
   const record = { ...form.value }
+  formErrors.value = getRowValidationErrors(record, table)
+  if (Object.keys(formErrors.value).length) {
+    await nextTick()
+    document.querySelector('.admin-edit-form [aria-invalid="true"]')?.focus()
+    return
+  }
+  if (editing.value === 'new' && sortableTables.has(table)) record.sort_order = nextSortOrder(table)
   if (table === 'landing_sections') {
     if (!record.title?.trim()) {
       notify('Isi judul bagian halaman utama terlebih dahulu.', 'error')
@@ -551,14 +754,14 @@ async function saveRow() {
       return
     }
     if (!record.service_ids?.length) {
-      notify('Pilih minimal satu layanan yang sesuai untuk jenis acara ini.', 'error')
+      formErrors.value = { service_ids: 'Pilih minimal satu layanan yang sesuai untuk jenis acara ini.' }
       return
     }
     const usedServices = dataSets.value.packages
       .filter((itemPackage) => itemPackage.event_type_id === record.id)
       .map((itemPackage) => itemPackage.service_id)
     if (usedServices.some((serviceId) => !record.service_ids.includes(serviceId))) {
-      notify('Sebagian layanan masih dipakai oleh paket. Ubah layanan paket tersebut sebelum menghapus kaitannya.', 'error')
+      formErrors.value = { service_ids: 'Layanan yang digunakan paket tidak dapat dilepas. Ubah layanan pada paket terkait terlebih dahulu.' }
       return
     }
     record.name = record.name.trim()
@@ -570,7 +773,7 @@ async function saveRow() {
   if (table === 'packages') {
     const eventType = dataSets.value.event_types.find((item) => item.id === record.event_type_id)
     if (!eventType || !eventType.service_ids?.includes(record.service_id)) {
-      notify('Pilih jenis acara dan salah satu layanan yang telah dihubungkan dengannya.', 'error')
+      formErrors.value = { service_id: 'Pilih layanan yang terhubung dengan jenis acara ini.' }
       return
     }
   }
@@ -628,6 +831,16 @@ async function saveRow() {
     return
   }
   try {
+    if (editing.value === 'new' && sortableTables.has(table)) {
+      const { data: lastOrderedRow, error: orderError } = await supabase
+        .from(table)
+        .select('sort_order')
+        .order('sort_order', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (orderError) throw orderError
+      record.sort_order = Number(lastOrderedRow?.sort_order || 0) + 1
+    }
     await uploadSelectedImages(record, table)
     if (table === 'landing_sections') await uploadLandingBlockImages(record)
     if (table === 'site_settings') {
@@ -738,14 +951,17 @@ async function loadAdminAccounts() {
 }
 function startNewAccount() {
   accountEditing.value = 'new'
+  accountErrors.value = {}
   accountForm.value = { full_name: '', email: '', password: '', role: 'editor' }
 }
 function editAccount(account) {
   accountEditing.value = account.id
+  accountErrors.value = {}
   accountForm.value = { full_name: account.full_name || '', email: account.email || '', password: '', role: account.role }
 }
 function cancelAccountEdit() {
   accountEditing.value = null
+  accountErrors.value = {}
   accountForm.value = { full_name: '', email: '', password: '', role: 'editor' }
 }
 async function saveAccount() {
@@ -756,16 +972,13 @@ async function saveAccount() {
   const fullName = accountForm.value.full_name.trim()
   const email = accountForm.value.email.trim().toLowerCase()
   const password = accountForm.value.password
-  if (fullName.length < 2 || fullName.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    notify('Isi nama (2–120 karakter) dan alamat email yang valid.', 'error')
-    return
-  }
-  if (accountEditing.value === 'new' && password.length < 8) {
-    notify('Kata sandi akun baru harus minimal 8 karakter.', 'error')
-    return
-  }
-  if (password && password.length < 8) {
-    notify('Kata sandi baru harus minimal 8 karakter.', 'error')
+  accountErrors.value = {}
+  if (fullName.length < 2 || fullName.length > 120) accountErrors.value.full_name = 'Nama harus berisi 2–120 karakter.'
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) accountErrors.value.email = 'Masukkan alamat email yang valid.'
+  if ((accountEditing.value === 'new' || password) && password.length < 8) accountErrors.value.password = 'Kata sandi minimal 8 karakter.'
+  if (Object.keys(accountErrors.value).length) {
+    await nextTick()
+    document.querySelector('.admin-account-form [aria-invalid="true"]')?.focus()
     return
   }
   saving.value = true
@@ -797,6 +1010,11 @@ async function saveAccount() {
     cancelAccountEdit()
     notify(isLocalDemo ? 'Akun demo diperbarui pada browser ini saja.' : 'Akun admin berhasil disimpan.')
   } catch (error) {
+    if (/email.*(sudah|used|exists|duplicate)|duplicate.*email/i.test(error.message || '')) {
+      accountErrors.value.email = error.message
+      await nextTick()
+      document.querySelector('.admin-account-form [aria-invalid="true"]')?.focus()
+    }
     notify(`Tidak dapat menyimpan akun: ${error.message}`, 'error')
   } finally {
     saving.value = false
@@ -934,6 +1152,9 @@ onMounted(loadDashboard)
         <div v-if="isLocalDemo" class="demo-banner"><span>Mode preview lokal.</span> Data pengelolaan contoh tidak tersimpan permanen. Konfigurasikan Supabase untuk mengaktifkan dashboard penuh.</div>
         <div v-else-if="!isSuperAdmin" class="demo-banner"><span>Akses editor.</span> Anda dapat mengelola konten dan tindak lanjut inquiry. Pengaturan situs, penghapusan konten, serta pengelolaan role hanya tersedia bagi super admin.</div>
         <div v-if="notice" class="admin-error"><span>{{ notice }}</span><button @click="loadDashboard">Coba lagi</button></div>
+        <div v-if="['inquiries', 'bookings'].includes(active)" class="table-toolbar date-filter-toolbar">
+          <button class="button button-outline date-filter-trigger" :class="{ 'date-filter-active': hasDateFilter }" type="button" @click="showDateFilter"><CalendarDays :size="16" /><span><strong>{{ dateFilterLabel }}</strong><small>Tanggal diterima</small></span><ChevronDown :size="15" /></button>
+        </div>
         <template v-if="active === 'dashboard'">
           <div class="admin-stats"><article class="stat-card"><span>KONSULTASI MASUK</span><div><strong>{{ counts.inquiries }}</strong><span class="stat-icon stat-icon-peach"><MessageSquareText :size="18" /></span></div><small>{{ counts.newInquiries }} belum dibalas</small></article><article class="stat-card"><span>BOOKING PERLU TINDAKAN</span><div><strong>{{ actionableBookings.length }}</strong><span class="stat-icon stat-icon-gold"><CalendarDays :size="18" /></span></div><small>{{ counts.newBookings }} booking baru</small></article><article class="stat-card"><span>LAYANAN AKTIF</span><div><strong>{{ counts.services }}</strong><span class="stat-icon stat-icon-green"><BookOpen :size="18" /></span></div><small>Di seluruh kategori</small></article><article class="stat-card"><span>PAKET</span><div><strong>{{ counts.packages }}</strong><span class="stat-icon stat-icon-blue"><Package :size="18" /></span></div><small>Paket dan add-on</small></article></div>
           <div class="admin-overview-grid"><section class="admin-panel inquiry-panel"><div class="panel-heading"><div><h2>Konsultasi terbaru</h2><p>Pesan dari formulir konsultasi, tidak termasuk booking.</p></div><button class="text-link" @click="setPage('inquiries')">Lihat semua <ArrowRight :size="14" /></button></div><div v-if="loading" class="admin-loading"><span class="skeleton skeleton-card"></span></div><div v-else-if="consultationInquiries.length" class="recent-list"><article v-for="item in consultationInquiries.slice(0, 5)" :key="item.id" class="recent-inquiry"><span class="inquiry-initial">{{ item.name?.charAt(0) }}</span><div class="recent-main"><strong>{{ item.name }}</strong><small>{{ item.event_type }} · {{ dateLabel(item.created_at) }}</small></div><span class="status-pill" :class="`status-${item.status}`">{{ item.status }}</span><button aria-label="Lihat inquiry" @click="setPage('inquiries')"><ArrowRight :size="15" /></button></article></div><div v-else class="admin-empty"><MessageSquareText :size="24" /><strong>Belum ada konsultasi</strong><span>Pesan dari formulir konsultasi akan muncul di sini.</span></div></section>
@@ -948,10 +1169,12 @@ onMounted(loadDashboard)
             <article class="stat-card"><span>INSTANSI / SEKOLAH</span><div><strong>{{ organizationBookings }}</strong><span class="stat-icon stat-icon-blue"><Users :size="18" /></span></div><small>Permintaan dari organisasi</small></article>
           </div>
           <section class="booking-list-panel">
-            <div class="table-toolbar booking-toolbar"><label class="search-box"><Search :size="16" /><input v-model="query" placeholder="Cari nama, instansi, kota..."></label><select v-model="filterStatus" class="select-control"><option value="semua">Semua status</option><option value="baru">Baru</option><option value="diproses">Diproses</option><option value="selesai">Selesai</option><option value="dibatalkan">Dibatalkan</option></select><button class="button button-outline export-button" @click="exportCsv"><ArrowDownToLine :size="15" /> Ekspor booking CSV</button></div>
-            <div v-for="item in filteredBookings" :key="item.id" class="booking-admin-card" :class="{ 'booking-admin-card-cancelled': item.status === 'dibatalkan' }">
+            <div class="table-toolbar booking-toolbar"><label class="search-box"><Search :size="16" /><input v-model="query" placeholder="Cari nama, instansi, kota..."></label><select v-model="filterStatus" class="select-control"><option value="semua">Semua status</option><option value="baru">Baru</option><option value="diproses">Diproses</option><option value="selesai">Selesai</option><option value="dibatalkan">Dibatalkan</option></select><button v-if="isSuperAdmin" class="button button-outline admin-selection-toggle" :class="{ 'admin-selection-on': selectionMode }" type="button" @click="toggleSelectionMode"><Trash2 :size="15" /> {{ selectionMode ? 'Tutup mode hapus' : 'Pilih untuk hapus' }}</button><button class="button button-outline export-button" @click="exportCsv"><ArrowDownToLine :size="15" /> Ekspor booking CSV</button></div>
+            <div v-if="selectionMode && isSuperAdmin" class="admin-delete-toolbar"><span>{{ visibleSelectedIds.length }} booking dipilih dari {{ bookingInquiries.length }} total</span><div><button class="button button-outline" type="button" :disabled="!filteredBookings.length || allVisibleSelected" @click="toggleSelectAllVisible">Pilih semua hasil</button><button class="button button-outline" type="button" :disabled="allTypeSelected" @click="selectAllInquiries">Pilih semua booking</button><button class="button button-danger" type="button" :disabled="!visibleSelectedIds.length || deletingInquiries" @click="deleteSelectedInquiries"><Trash2 :size="14" /> Hapus terpilih</button><button class="button button-danger button-danger-quiet" type="button" :disabled="!bookingInquiries.length || deletingInquiries" @click="deleteAllInquiries"><Trash2 :size="14" /> Hapus semua booking</button></div></div>
+            <div v-for="item in filteredBookings" :key="item.id" class="booking-admin-card" :class="{ 'booking-admin-card-cancelled': item.status === 'dibatalkan', 'booking-admin-card-selected': selectionMode && selectedInquiryIds.includes(item.id) }">
+              <label v-if="selectionMode && isSuperAdmin" class="admin-row-select"><input type="checkbox" :checked="selectedInquiryIds.includes(item.id)" @change="toggleInquirySelection(item.id)"><span>Pilih booking ini</span></label>
               <div class="booking-admin-card-head">
-                <div class="booking-admin-customer"><span class="inquiry-initial">{{ item.name?.charAt(0) }}</span><div><strong>{{ bookingContactName(item) }}</strong><small>{{ item.booking_type === 'organization' ? `${item.name} · ${item.organization_type || 'Instansi / sekolah'}` : 'Pelanggan personal' }}</small><small>{{ item.email }} · {{ item.phone }}</small></div></div>
+                <div class="booking-admin-customer"><span class="inquiry-initial">{{ item.name?.charAt(0) }}</span><div><strong>{{ bookingContactName(item) }}</strong><small>{{ item.booking_type === 'organization' ? `${item.name} · ${item.organization_type || 'Instansi / sekolah'}` : 'Pelanggan personal' }}</small><small>{{ item.email }} · {{ toLocalIndonesianPhone(item.phone) }}</small></div></div>
                 <label class="booking-status-field"><span>Status booking</span><select v-model="item.status" class="status-select" :class="`status-${item.status}`" :disabled="saving" @change="updateInquiry(item)"><option value="baru">Baru</option><option value="diproses">Sedang diproses</option><option value="selesai">Selesai</option><option value="dibatalkan">Batalkan booking</option></select></label>
               </div>
               <div v-if="hasBookingConflict(item)" class="booking-conflict-notice"><CalendarDays :size="16" /><span><strong>Periksa jadwal:</strong> ada permintaan acara {{ item.event_type }} lain pada tanggal yang sama. Konfirmasi ketersediaan sebelum menerima booking ini.</span></div>
@@ -979,7 +1202,33 @@ onMounted(loadDashboard)
           </section>
         </template>
         <template v-else-if="active === 'inquiries'">
-          <section class="admin-panel table-panel"><div class="table-toolbar"><label class="search-box"><Search :size="16" /><input v-model="query" placeholder="Cari nama, email, acara..."></label><select v-model="filterStatus" class="select-control"><option value="semua">Semua status</option><option value="baru">Baru</option><option value="diproses">Diproses</option><option value="selesai">Selesai</option></select><button class="button button-outline export-button" @click="exportCsv"><ArrowDownToLine :size="15" /> Ekspor CSV</button></div><div class="table-scroll"><table class="admin-table"><thead><tr><th>PIC & KONTAK</th><th>PEMESAN / PAKET</th><th>DETAIL ACARA</th><th>DITERIMA</th><th>STATUS</th><th>CATATAN</th></tr></thead><tbody><tr v-for="item in filteredInquiries" :key="item.id"><td><strong>{{ item.name }}</strong><small>{{ item.email }} · {{ item.phone }}</small><details class="inquiry-message"><summary>Pesan & add-on</summary><p>{{ item.message }}</p><div v-if="item.selected_addons?.length" class="inquiry-addon-summary"><strong>Tambahan yang dipilih:</strong><span v-for="addon in item.selected_addons" :key="addon.id || addon.name">{{ addon.name }} × {{ addon.quantity || 1 }} — {{ formatPrice((addon.price || 0) * (addon.quantity || 1)) }}</span></div><div v-if="item.special_requirements"><strong>Kebutuhan khusus:</strong> {{ item.special_requirements }}</div></details></td><td>{{ item.booking_type === 'organization' ? item.organization_name || 'Instansi / sekolah' : 'Personal' }}<small>{{ item.organization_type || '' }} {{ item.contact_position ? `· ${item.contact_position}` : '' }}</small><small>{{ dataSets.packages.find((entry) => entry.id === item.package_id)?.name || (item.package_id ? 'Paket terpilih' : 'Minta rekomendasi') }}</small></td><td>{{ item.event_type || '—' }}<small>{{ item.guest_count ? `${item.guest_count} peserta/tamu` : '' }}</small><small>{{ item.event_date ? dateLabel(item.event_date) : 'Fleksibel' }} {{ item.event_start_time ? `· ${item.event_start_time}` : '' }}</small><small>{{ [item.event_location, item.event_city].filter(Boolean).join(' · ') }}</small></td><td>{{ dateLabel(item.created_at) }}</td><td><select v-model="item.status" class="status-select" :class="`status-${item.status}`" :disabled="saving" @change="updateInquiry(item)"><option value="baru">Baru</option><option value="diproses">Diproses</option><option value="selesai">Selesai</option></select></td><td><input v-model="item.notes" class="notes-input" placeholder="Catatan internal" @change="updateInquiry(item)"></td></tr></tbody></table></div><div v-if="!filteredInquiries.length" class="admin-empty"><MessageSquareText :size="25" /><strong>Tidak ada pertanyaan ditemukan</strong><span>Pesan publik atau ubah filter pencarian.</span></div></section>
+          <section class="admin-panel table-panel">
+            <div class="table-toolbar">
+              <label class="search-box"><Search :size="16" /><input v-model="query" placeholder="Cari nama, email, acara..."></label>
+              <select v-model="filterStatus" class="select-control"><option value="semua">Semua status</option><option value="baru">Baru</option><option value="diproses">Diproses</option><option value="selesai">Selesai</option></select>
+              <button v-if="isSuperAdmin" class="button button-outline admin-selection-toggle" :class="{ 'admin-selection-on': selectionMode }" type="button" @click="toggleSelectionMode"><Trash2 :size="15" /> {{ selectionMode ? 'Tutup mode hapus' : 'Pilih untuk hapus' }}</button>
+              <button class="button button-outline export-button" @click="exportCsv"><ArrowDownToLine :size="15" /> Ekspor CSV</button>
+            </div>
+            <div v-if="selectionMode && isSuperAdmin" class="admin-delete-toolbar"><span>{{ visibleSelectedIds.length }} pertanyaan dipilih dari {{ consultationInquiries.length }} total</span><div><button class="button button-outline" type="button" :disabled="!filteredInquiries.length || allVisibleSelected" @click="toggleSelectAllVisible">Pilih semua hasil</button><button class="button button-outline" type="button" :disabled="allTypeSelected" @click="selectAllInquiries">Pilih semua pertanyaan</button><button class="button button-danger" type="button" :disabled="!visibleSelectedIds.length || deletingInquiries" @click="deleteSelectedInquiries"><Trash2 :size="14" /> Hapus terpilih</button><button class="button button-danger button-danger-quiet" type="button" :disabled="!consultationInquiries.length || deletingInquiries" @click="deleteAllInquiries"><Trash2 :size="14" /> Hapus semua pertanyaan</button></div></div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th v-if="selectionMode && isSuperAdmin"><input type="checkbox" aria-label="Pilih semua pertanyaan yang terlihat" :checked="allVisibleSelected" @change="toggleSelectAllVisible"></th><th>PIC & KONTAK</th><th>PEMESAN / PAKET</th><th>DETAIL ACARA</th><th>DITERIMA</th><th>STATUS</th><th>CATATAN</th><th>AKSI</th></tr></thead>
+                <tbody>
+                  <tr v-for="item in filteredInquiries" :key="item.id">
+                    <td v-if="selectionMode && isSuperAdmin"><input type="checkbox" :aria-label="`Pilih pertanyaan dari ${item.name}`" :checked="selectedInquiryIds.includes(item.id)" @change="toggleInquirySelection(item.id)"></td>
+                    <td><strong>{{ item.name }}</strong><small>{{ item.email }} · {{ toLocalIndonesianPhone(item.phone) }}</small><details class="inquiry-message"><summary>Pesan & add-on</summary><p>{{ item.message }}</p><div v-if="item.selected_addons?.length" class="inquiry-addon-summary"><strong>Tambahan yang dipilih:</strong><span v-for="addon in item.selected_addons" :key="addon.id || addon.name">{{ addon.name }} × {{ addon.quantity || 1 }} — {{ formatPrice((addon.price || 0) * (addon.quantity || 1)) }}</span></div><div v-if="item.special_requirements"><strong>Kebutuhan khusus:</strong> {{ item.special_requirements }}</div></details></td>
+                    <td>{{ item.booking_type === 'organization' ? item.organization_name || 'Instansi / sekolah' : 'Personal' }}<small>{{ item.organization_type || '' }} {{ item.contact_position ? `· ${item.contact_position}` : '' }}</small><small>{{ dataSets.packages.find((entry) => entry.id === item.package_id)?.name || (item.package_id ? 'Paket terpilih' : 'Minta rekomendasi') }}</small></td>
+                    <td>{{ item.event_type || '—' }}<small>{{ item.guest_count ? `${item.guest_count} peserta/tamu` : '' }}</small><small>{{ item.event_date ? dateLabel(item.event_date) : 'Fleksibel' }} {{ item.event_start_time ? `· ${item.event_start_time}` : '' }}</small><small>{{ [item.event_location, item.event_city].filter(Boolean).join(' · ') }}</small></td>
+                    <td>{{ dateLabel(item.created_at) }}</td>
+                    <td><select v-model="item.status" class="status-select" :class="`status-${item.status}`" :disabled="saving" @change="updateInquiry(item)"><option value="baru">Baru</option><option value="diproses">Diproses</option><option value="selesai">Selesai</option></select></td>
+                    <td><input v-model="item.notes" class="notes-input" placeholder="Catatan internal" @change="updateInquiry(item)"></td>
+                    <td><a v-if="item.phone" class="button button-outline inquiry-whatsapp" :href="whatsappLink(item)" target="_blank" rel="noreferrer"><MessageSquareText :size="14" /> WhatsApp</a><span v-else>—</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="!filteredInquiries.length" class="admin-empty"><MessageSquareText :size="25" /><strong>Tidak ada pertanyaan ditemukan</strong><span>Pesan publik atau ubah filter pencarian.</span></div>
+          </section>
         </template>
         <template v-else>
           <section v-if="active === 'profiles'" class="admin-panel role-management">
@@ -988,9 +1237,9 @@ onMounted(loadDashboard)
             <div v-if="accountEditing" class="admin-account-form">
               <div class="panel-heading"><h3>{{ accountEditing === 'new' ? 'Buat akun admin' : 'Ubah akun admin' }}</h3><button class="icon-button" type="button" @click="cancelAccountEdit"><X :size="18" /></button></div>
               <div class="edit-fields">
-                <label class="field"><span>Nama lengkap</span><input v-model.trim="accountForm.full_name" type="text" maxlength="120" autocomplete="name" required></label>
-                <label class="field"><span>Email</span><input v-model.trim="accountForm.email" type="email" maxlength="254" autocomplete="email" required></label>
-                <label class="field"><span>{{ accountEditing === 'new' ? 'Kata sandi awal' : 'Kata sandi baru (opsional)' }}</span><input v-model="accountForm.password" type="password" minlength="8" :required="accountEditing === 'new'" :autocomplete="accountEditing === 'new' ? 'new-password' : 'new-password'" :placeholder="accountEditing === 'new' ? 'Minimal 8 karakter' : 'Kosongkan jika tidak diubah'"></label>
+                <label class="field"><span>Nama lengkap</span><input v-model.trim="accountForm.full_name" type="text" maxlength="120" autocomplete="name" required :aria-invalid="Boolean(accountErrors.full_name)" aria-describedby="account-name-error" @blur="accountForm.full_name = accountForm.full_name.trim()"><small v-if="accountErrors.full_name" id="account-name-error" class="field-error" role="alert">{{ accountErrors.full_name }}</small></label>
+                <label class="field"><span>Email</span><input v-model.trim="accountForm.email" type="email" maxlength="254" autocomplete="email" required :aria-invalid="Boolean(accountErrors.email)" aria-describedby="account-email-error" @blur="accountForm.email = accountForm.email.trim().toLowerCase()"><small v-if="accountErrors.email" id="account-email-error" class="field-error" role="alert">{{ accountErrors.email }}</small></label>
+                <label class="field"><span>{{ accountEditing === 'new' ? 'Kata sandi awal' : 'Kata sandi baru (opsional)' }}</span><input v-model="accountForm.password" type="password" minlength="8" maxlength="128" :required="accountEditing === 'new'" autocomplete="new-password" :placeholder="accountEditing === 'new' ? 'Minimal 8 karakter' : 'Kosongkan jika tidak diubah'" :aria-invalid="Boolean(accountErrors.password)" aria-describedby="account-password-error"><small v-if="accountErrors.password" id="account-password-error" class="field-error" role="alert">{{ accountErrors.password }}</small></label>
                 <label class="field"><span>Hak akses</span><select v-model="accountForm.role"><option value="editor">Editor</option><option value="super_admin">Super admin</option></select></label>
               </div>
               <div class="edit-actions"><button class="button button-outline" type="button" :disabled="saving" @click="cancelAccountEdit">Batal</button><button class="button button-dark" type="button" :disabled="saving" @click="saveAccount">{{ saving ? 'Menyimpan...' : 'Simpan akun' }}</button></div>
@@ -1016,23 +1265,22 @@ onMounted(loadDashboard)
               <p v-if="active === 'landing_sections'" class="admin-form-hint">Bagian ini akan muncul di beranda. Nama bagian dibuat otomatis—Anda tidak perlu mengisi kode atau slug.</p>
               <p v-else-if="active === 'packages'" class="admin-form-hint">Isi detail paket. Untuk menambahkan beberapa item atau add-on, gunakan tombol tambah di bagian masing-masing.</p>
               <p v-else-if="active === 'event_types'" class="admin-form-hint">Jenis acara akan menyaring layanan dan paket di formulir booking. Satu acara dapat memiliki beberapa layanan yang sesuai.</p>
+              <div v-if="Object.keys(formErrors).length" class="form-error-summary" role="alert"><strong>Periksa kembali data yang dimasukkan.</strong><span>{{ Object.keys(formErrors).length }} bagian perlu diperbaiki sebelum disimpan.</span></div>
               <div v-if="active === 'event_types'" class="edit-fields">
-                <label class="field"><span>Nama jenis acara</span><input v-model.trim="form.name" type="text" required maxlength="120" placeholder="Contoh: Pentas seni sekolah"></label>
-                <label class="field"><span>Tipe pemesan</span><select v-model="form.booking_type" required><option value="organization">Instansi / sekolah / organisasi</option><option value="personal">Personal</option></select></label>
-                <label class="field"><span>Urutan tampil</span><input v-model.number="form.sort_order" type="number" min="0"></label>
+                <label class="field"><span>Nama jenis acara</span><input v-model.trim="form.name" name="name" type="text" required minlength="2" maxlength="160" placeholder="Contoh: Pentas seni sekolah" :aria-invalid="Boolean(formErrors.name)" aria-describedby="admin-event-name-error" @blur="validateRowField('name')"><small v-if="formErrors.name" id="admin-event-name-error" class="field-error" role="alert">{{ formErrors.name }}</small></label>
+                <label class="field"><span>Tipe pemesan</span><select v-model="form.booking_type" name="booking_type" required :aria-invalid="Boolean(formErrors.booking_type)" aria-describedby="admin-event-booking-type-error" @change="validateRowField('booking_type')"><option value="organization">Instansi / sekolah / organisasi</option><option value="personal">Personal</option></select><small v-if="formErrors.booking_type" id="admin-event-booking-type-error" class="field-error" role="alert">{{ formErrors.booking_type }}</small></label>
                 <label class="field"><span>Status</span><select v-model="form.is_published"><option :value="true">Aktif di formulir booking</option><option :value="false">Nonaktif</option></select></label>
-                <div class="field field-wide"><span>Layanan yang tersedia untuk jenis acara ini</span><small class="field-help">Pelanggan hanya akan melihat layanan yang dicentang. Contoh: Perpisahan & Wisuda dapat memakai layanan wisuda sekolah dan produksi foto/video.</small><div class="event-type-service-list"><label v-for="service in dataSets.services" :key="service.id" class="event-type-service-option"><input v-model="form.service_ids" type="checkbox" :value="service.id"><span>{{ service.title }}<small>{{ dataSets.categories.find((category) => category.id === service.category_id)?.name || 'Tanpa kategori' }}{{ service.is_published ? '' : ' · Draft (tidak tampil ke pelanggan)' }}</small></span></label><small v-if="!dataSets.services.length" class="field-help">Tambahkan layanan terlebih dahulu di menu Layanan & kategori.</small></div></div>
+                <div class="field field-wide"><span>Layanan yang tersedia untuk jenis acara ini</span><small class="field-help">Pilih satu atau lebih layanan. Pelanggan hanya akan melihat layanan yang dipilih.</small><div class="event-type-service-list"><label v-for="service in dataSets.services" :key="service.id" class="event-type-service-option"><input v-model="form.service_ids" type="checkbox" :value="service.id" :aria-invalid="Boolean(formErrors.service_ids)" aria-describedby="admin-event-services-error" @change="validateRowField('service_ids')"><span>{{ service.title }}<small>{{ dataSets.categories.find((category) => category.id === service.category_id)?.name || 'Tanpa kategori' }}{{ service.is_published ? '' : ' · Draft (tidak tampil ke pelanggan)' }}</small></span></label><small v-if="!dataSets.services.length" class="field-help">Tambahkan layanan terlebih dahulu di menu Layanan & kategori.</small></div><small v-if="formErrors.service_ids" id="admin-event-services-error" class="field-error" role="alert">{{ formErrors.service_ids }}</small></div>
               </div>
               <div v-else-if="active === 'packages'" class="edit-fields">
-                <label class="field"><span>Nama paket</span><input v-model.trim="form.name" type="text" required placeholder="Contoh: Paket Perpisahan Sekolah"></label>
-                <label class="field"><span>Jenis acara</span><select v-model="form.event_type_id" required @change="!packageServices.some((service) => service.id === form.service_id) && (form.service_id = '')"><option value="">Pilih jenis acara</option><option v-for="eventType in packageEventTypes" :key="eventType.id" :value="eventType.id">{{ eventType.name }}{{ eventType.booking_type === 'organization' ? ' · Instansi / sekolah' : ' · Personal' }}{{ eventType.is_published ? '' : ' · Nonaktif' }}</option></select><small class="field-help">Paket ini hanya akan ditawarkan untuk jenis acara yang dipilih.</small></label>
-                <label class="field"><span>Layanan</span><select v-model="form.service_id" required :disabled="!form.event_type_id"><option value="">Pilih layanan</option><option v-for="service in packageServices" :key="service.id" :value="service.id">{{ service.title }}</option></select></label>
+                <label class="field"><span>Nama paket</span><input v-model.trim="form.name" type="text" required minlength="2" maxlength="160" placeholder="Contoh: Paket Perpisahan Sekolah" :aria-invalid="Boolean(formErrors.name)" aria-describedby="admin-package-name-error" @blur="validateRowField('name')"><small v-if="formErrors.name" id="admin-package-name-error" class="field-error" role="alert">{{ formErrors.name }}</small></label>
+                <label class="field"><span>Jenis acara</span><select v-model="form.event_type_id" required :aria-invalid="Boolean(formErrors.event_type_id)" aria-describedby="admin-package-event-type-error" @change="!packageServices.some((service) => service.id === form.service_id) && (form.service_id = ''); validateRowField('event_type_id')"><option value="">Pilih jenis acara</option><option v-for="eventType in packageEventTypes" :key="eventType.id" :value="eventType.id">{{ eventType.name }}{{ eventType.booking_type === 'organization' ? ' · Instansi / sekolah' : ' · Personal' }}{{ eventType.is_published ? '' : ' · Nonaktif' }}</option></select><small class="field-help">Paket ini hanya akan ditawarkan untuk jenis acara yang dipilih.</small><small v-if="formErrors.event_type_id" id="admin-package-event-type-error" class="field-error" role="alert">{{ formErrors.event_type_id }}</small></label>
+                <label class="field"><span>Layanan</span><select v-model="form.service_id" required :disabled="!form.event_type_id" :aria-invalid="Boolean(formErrors.service_id)" aria-describedby="admin-package-service-error" @change="validateRowField('service_id')"><option value="">Pilih layanan</option><option v-for="service in packageServices" :key="service.id" :value="service.id">{{ service.title }}</option></select><small v-if="formErrors.service_id" id="admin-package-service-error" class="field-error" role="alert">{{ formErrors.service_id }}</small></label>
                 <label class="field field-wide"><span>Deskripsi singkat</span><textarea v-model="form.description" rows="3" placeholder="Jelaskan paket ini secara singkat"></textarea></label>
-                <label class="field"><span>Harga (Rp)</span><CurrencyInput v-model="form.price" aria-label="Harga paket dalam rupiah" placeholder="Contoh: 1.000.000" /></label>
+                <label class="field"><span>Harga (Rp)</span><CurrencyInput v-model="form.price" aria-label="Harga paket dalam rupiah" placeholder="Contoh: 1.000.000" :aria-invalid="Boolean(formErrors.price)" aria-describedby="admin-package-price-error" @blur="validateRowField('price')" /><small v-if="formErrors.price" id="admin-package-price-error" class="field-error" role="alert">{{ formErrors.price }}</small></label>
                 <label class="field"><span>Keterangan harga</span><input v-model="form.price_label" type="text" placeholder="Contoh: Mulai dari / per siswa"></label>
                 <label class="field"><span>Tampilkan di halaman utama</span><select v-model="form.featured"><option :value="true">Ya</option><option :value="false">Tidak</option></select></label>
                 <label class="field"><span>Status paket</span><select v-model="form.is_published"><option :value="true">Dipublikasikan</option><option :value="false">Draft</option></select></label>
-                <label class="field"><span>Urutan tampil</span><input v-model.number="form.sort_order" type="number" min="0"></label>
                 <div class="field field-wide repeater-field">
                   <div class="repeater-heading"><span>Yang termasuk dalam paket</span><button class="row-edit" type="button" @click="addPackageInclusion"><Plus :size="14" /> Tambah item</button></div>
                   <p class="field-help">Contoh: dekorasi panggung, sound system, dokumentasi foto.</p>
@@ -1055,7 +1303,7 @@ onMounted(loadDashboard)
                 </div>
               </div>
               <div v-else-if="active === 'landing_sections'" class="edit-fields">
-                <label class="field field-wide"><span>Judul bagian</span><input v-model.trim="form.title" type="text" required placeholder="Contoh: Layanan tambahan kami"><small class="field-help">Judul ini menjadi heading utama bagian di halaman beranda.</small></label>
+                <label class="field field-wide"><span>Judul bagian</span><input v-model.trim="form.title" type="text" required maxlength="160" placeholder="Contoh: Layanan tambahan kami" :aria-invalid="Boolean(formErrors.title)" aria-describedby="admin-landing-title-error" @blur="validateRowField('title')"><small class="field-help">Judul ini menjadi heading utama bagian di halaman beranda.</small><small v-if="formErrors.title" id="admin-landing-title-error" class="field-error" role="alert">{{ formErrors.title }}</small></label>
                 <div v-if="editing === 'new' || form.section_key?.startsWith('custom-')" class="field field-wide landing-builder">
                   <div class="landing-builder-heading"><div><strong>Susun isi bagian</strong><p>Tambahkan baris dan kolom, lalu masukkan elemen sesuai kebutuhan. Atur lebar kolom agar susunannya lebih bebas.</p></div><button class="row-edit" type="button" @click="addLandingRow"><Plus :size="14" /> Tambah baris</button></div>
                   <section v-for="(row, rowIndex) in form.content_blocks" :key="row.id" class="landing-builder-row">
@@ -1085,22 +1333,21 @@ onMounted(loadDashboard)
                   <label class="field"><span>Tujuan tombol</span><input v-model="form.cta_url" type="text" placeholder="Contoh: /layanan"></label>
                 </template>
                 <label class="field"><span>Status bagian</span><select v-model="form.is_enabled"><option :value="true">Tampilkan di beranda</option><option :value="false">Sembunyikan</option></select></label>
-                <label class="field"><span>Urutan bagian</span><input v-model.number="form.sort_order" type="number" min="0"><small class="field-help">Angka lebih kecil tampil lebih dahulu.</small></label>
               </div>
               <div v-else class="edit-fields">
                 <template v-for="(value, key) in form" :key="key">
                   <label v-if="key !== 'id' && key !== 'created_at' && key !== 'updated_at' && key !== 'sort_order' && key !== 'metadata' && key !== 'addons' && key !== 'inclusions' && key !== 'media' && key !== 'service_ids' && key !== 'event_type_services' && key !== 'value' && key !== 'package_id' && key !== 'category_id' && key !== 'service_id' && key !== 'is_public' && key !== 'slug' && !(active === 'portfolios' && key === 'category') && !['image_url', 'cover_image_url', 'logo_url', 'avatar_url'].includes(key)" class="field">
                     <span>{{ key.replaceAll('_', ' ') }}</span>
-                    <select v-if="typeof value === 'boolean'" v-model="form[key]"><option :value="true">Aktif</option><option :value="false">Draft</option></select>
-                    <textarea v-else-if="['description','summary','answer','quote','subtitle','body','message','notes','address'].includes(key)" v-model="form[key]" rows="3"></textarea>
-                    <CurrencyInput v-else-if="key === 'price'" v-model="form[key]" aria-label="Harga dalam rupiah" placeholder="Contoh: 1.000.000" />
-                    <input v-else-if="key === 'rating' || key === 'guest_count'" v-model.number="form[key]" type="number" min="0">
-                    <input v-else v-model="form[key]" :type="key === 'email' ? 'email' : 'text'">
+                    <select v-if="typeof value === 'boolean'" v-model="form[key]" :aria-invalid="Boolean(formErrors[key])" @change="validateRowField(key)"><option :value="true">Aktif</option><option :value="false">Draft</option></select>
+                    <textarea v-else-if="['description','summary','answer','quote','subtitle','body','message','notes','address'].includes(key)" v-model="form[key]" rows="3" :aria-invalid="Boolean(formErrors[key])" @blur="validateRowField(key)"></textarea>
+                    <CurrencyInput v-else-if="key === 'price'" v-model="form[key]" aria-label="Harga dalam rupiah" placeholder="Contoh: 1.000.000" :aria-invalid="Boolean(formErrors[key])" @blur="validateRowField(key)" />
+                    <input v-else-if="key === 'rating' || key === 'guest_count'" v-model.number="form[key]" type="number" min="0" :max="key === 'rating' ? 5 : 100000" :aria-invalid="Boolean(formErrors[key])" @blur="validateRowField(key)">
+                    <input v-else v-model.trim="form[key]" :type="key === 'email' ? 'email' : 'text'" :maxlength="['name', 'title', 'question'].includes(key) ? 160 : undefined" :aria-invalid="Boolean(formErrors[key])" @blur="validateRowField(key)">
+                    <small v-if="formErrors[key]" :id="`admin-field-${key}-error`" class="field-error" role="alert">{{ formErrors[key] }}</small>
                   </label>
-                  <label v-if="key === 'sort_order'" class="field"><span>Urutan</span><input v-model.number="form[key]" type="number" min="0"></label>
-                  <label v-if="key === 'category_id'" class="field"><span>Kategori</span><select v-model="form[key]"><option value="">Pilih kategori</option><option v-for="category in dataSets.categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label>
-                  <label v-if="key === 'service_id'" class="field"><span>Layanan</span><select v-model="form[key]"><option value="">Pilih layanan</option><option v-for="service in dataSets.services" :key="service.id" :value="service.id">{{ service.title }}</option></select></label>
-                  <label v-if="key === 'value' && !(active === 'site_settings' && form.key === 'logo_url')" class="field"><span>Nilai</span><input v-model="form.value" type="text"></label>
+                  <label v-if="key === 'category_id'" class="field"><span>Kategori</span><select v-model="form[key]" :aria-invalid="Boolean(formErrors.category_id)" aria-describedby="admin-category-error" @change="validateRowField('category_id')"><option value="">Pilih kategori</option><option v-for="category in dataSets.categories" :key="category.id" :value="category.id">{{ category.name }}</option></select><small v-if="formErrors.category_id" id="admin-category-error" class="field-error" role="alert">{{ formErrors.category_id }}</small></label>
+                  <label v-if="key === 'service_id'" class="field"><span>Layanan</span><select v-model="form[key]" :aria-invalid="Boolean(formErrors.service_id)" aria-describedby="admin-service-error" @change="validateRowField('service_id')"><option value="">Pilih layanan</option><option v-for="service in dataSets.services" :key="service.id" :value="service.id">{{ service.title }}</option></select><small v-if="formErrors.service_id" id="admin-service-error" class="field-error" role="alert">{{ formErrors.service_id }}</small></label>
+                  <label v-if="key === 'value' && !(active === 'site_settings' && form.key === 'logo_url')" class="field"><span>Nilai</span><input v-model="form.value" type="text" :aria-invalid="Boolean(formErrors.value)" aria-describedby="admin-setting-value-error" @blur="validateRowField('value')"><small v-if="formErrors.value" id="admin-setting-value-error" class="field-error" role="alert">{{ formErrors.value }}</small></label>
                 </template>
                 <label v-for="key in imageFieldKeys" :key="`image-${key}`" class="field field-wide admin-image-field">
                   <span>{{ key === 'cover_image_url' ? 'Gambar sampul' : key === 'logo_url' && active === 'clients' ? 'Logo klien / partner' : key === 'logo_url' || (active === 'site_settings' && key === 'value') ? 'Logo situs' : key === 'avatar_url' ? 'Foto profil pemberi testimoni' : 'Gambar' }} <small>{{ active === 'clients' ? 'Pilih logo dari perangkat Anda; logo akan ditampilkan di bagian Klien & partner.' : active === 'testimonials' && key === 'avatar_url' ? 'Pilih foto profil yang akan ditampilkan pada kartu testimoni di halaman utama.' : 'Pilih berkas gambar dari perangkat Anda.' }}</small></span>
@@ -1110,8 +1357,8 @@ onMounted(loadDashboard)
               </div>
               <div class="edit-actions"><button class="button button-outline" @click="cancelEdit">Batal</button><button class="button button-dark" :disabled="saving" @click="saveRow">{{ saving ? 'Menyimpan...' : 'Simpan perubahan' }}</button></div>
             </div>
-            <div class="table-scroll"><table v-if="active !== 'site_settings'" class="admin-table"><thead><tr><th v-for="field in (active === 'services' ? ['title','category_id','summary','is_published'] : active === 'categories' ? ['name','slug','description','sort_order'] : active === 'packages' ? ['name','event_type_id','service_id','price','is_published'] : active === 'portfolios' ? ['title','category','is_published'] : active === 'faqs' ? ['question','answer','is_published'] : active === 'landing_sections' ? ['title','subtitle','is_enabled'] : active === 'contacts' ? ['name','division','phone'] : active === 'clients' ? ['name','website_url','is_published'] : active === 'event_types' ? ['name','booking_type','sort_order','is_published'] : ['name','role','is_published'])" :key="field">{{ field === 'is_enabled' || field === 'is_published' ? 'STATUS' : field === 'booking_type' ? 'TIPE PEMESAN' : field === 'event_type_id' ? 'JENIS ACARA' : field.replaceAll('_',' ').toUpperCase() }}</th><th>AKSI</th></tr></thead><tbody><tr v-for="item in currentRows.filter((row) => JSON.stringify(row).toLowerCase().includes(query.toLowerCase()) && (filterStatus === 'semua' || (filterStatus === 'published' ? row.is_published : !row.is_published)))" :key="item.id"><td v-for="field in (active === 'services' ? ['title','category_id','summary','is_published'] : active === 'categories' ? ['name','slug','description','sort_order'] : active === 'packages' ? ['name','event_type_id','service_id','price','is_published'] : active === 'portfolios' ? ['title','category','is_published'] : active === 'faqs' ? ['question','answer','is_published'] : active === 'landing_sections' ? ['title','subtitle','is_enabled'] : active === 'contacts' ? ['name','division','phone'] : active === 'clients' ? ['name','website_url','is_published'] : active === 'event_types' ? ['name','booking_type','sort_order','is_published'] : ['name','role','is_published'])" :key="field">{{ displayValue(item, field) }}</td><td class="row-actions"><button class="row-edit" @click="editRow(item)">Edit</button><button v-if="item.is_published !== undefined || item.is_enabled !== undefined" class="row-toggle" @click="togglePublished(item)">{{ (item.is_published ?? item.is_enabled) ? 'Sembunyikan' : 'Publikasikan' }}</button><button v-if="isSuperAdmin" class="row-delete" @click="deleteRow(item)">Hapus</button></td></tr></tbody></table>
-              <div v-if="active === 'site_settings'" class="settings-list"><article v-for="item in dataSets.site_settings" :key="item.id || item.key" class="setting-row"><div><strong>{{ item.label || item.key?.replaceAll('_',' ') || item.name }}</strong><small>{{ item.key === 'map_location' ? 'Lokasi yang ditampilkan pada peta halaman Kontak' : 'Pengaturan situs' }}</small></div><template v-if="item.key === 'map_location'"><input v-model="item.value" aria-label="Lokasi peta" placeholder="Contoh: Tasikmalaya, Jawa Barat"><button class="row-edit" :disabled="saving" @click="saveMapLocation(item)">{{ saving ? 'Menyimpan...' : 'Simpan' }}</button></template><template v-else><input v-model="item.value" @change="editRow(item)"><button class="row-edit" @click="editRow(item)">Ubah</button></template></article></div>
+            <div class="table-scroll"><table v-if="active !== 'site_settings'" class="admin-table"><thead><tr><th v-for="field in fieldsForTable(active)" :key="field">{{ field === 'is_enabled' || field === 'is_published' ? 'STATUS' : field === 'booking_type' ? 'TIPE PEMESAN' : field === 'event_type_id' ? 'JENIS ACARA' : field.replaceAll('_',' ').toUpperCase() }}</th><th>AKSI</th></tr></thead><tbody><tr v-for="item in currentRows.filter((row) => JSON.stringify(row).toLowerCase().includes(query.toLowerCase()) && (filterStatus === 'semua' || (filterStatus === 'published' ? row.is_published : !row.is_published)))" :key="item.id"><td v-for="field in fieldsForTable(active)" :key="field">{{ displayValue(item, field) }}</td><td class="row-actions"><button class="row-edit" @click="editRow(item)">Edit</button><button v-if="item.is_published !== undefined || item.is_enabled !== undefined" class="row-toggle" @click="togglePublished(item)">{{ (item.is_published ?? item.is_enabled) ? 'Sembunyikan' : 'Publikasikan' }}</button><button v-if="isSuperAdmin" class="row-delete" @click="deleteRow(item)">Hapus</button></td></tr></tbody></table>
+              <div v-if="active === 'site_settings'" class="settings-list"><article v-for="item in dataSets.site_settings" :key="item.id || item.key" class="setting-row"><div><strong>{{ item.label || item.key?.replaceAll('_',' ') || item.name }}</strong><small>{{ item.key === 'map_location' ? 'Lokasi yang ditampilkan pada peta halaman Kontak' : 'Pengaturan situs' }}</small></div><template v-if="item.key === 'map_location'"><input :id="`map-location-${item.id}`" v-model="item.value" maxlength="160" aria-label="Lokasi peta" :aria-invalid="Boolean(mapLocationErrors[item.id])" :aria-describedby="mapLocationErrors[item.id] ? `map-location-error-${item.id}` : undefined" placeholder="Contoh: Tasikmalaya, Jawa Barat" @input="delete mapLocationErrors[item.id]"><button class="row-edit" :disabled="saving" @click="saveMapLocation(item)">{{ saving ? 'Menyimpan...' : 'Simpan' }}</button></template><template v-else><input v-model="item.value" @change="editRow(item)"><button class="row-edit" @click="editRow(item)">Ubah</button></template><span v-if="item.key === 'map_location' && mapLocationErrors[item.id]" :id="`map-location-error-${item.id}`" class="field-error" role="alert">{{ mapLocationErrors[item.id] }}</span></article></div>
               <div v-if="!currentRows.length" class="admin-empty"><span>Belum ada konten. Mulai dengan menambahkan item baru.</span></div></div>
           </section>
           </template>

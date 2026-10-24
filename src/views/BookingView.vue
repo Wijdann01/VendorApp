@@ -1,11 +1,12 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, CircleAlert, Clock3, MapPin, Minus, Plus, Users } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSiteStore } from '../stores/site'
 import { useToast } from '../composables/useToast'
 import { formatPrice } from '../data/demo'
 import { supabase, supabaseConfigured } from '../lib/supabase'
+import { toLocalIndonesianPhone } from '../lib/phone'
 import CurrencyInput from '../components/CurrencyInput.vue'
 
 const route = useRoute()
@@ -39,6 +40,7 @@ const form = ref({
 const selectedAddons = ref({})
 const errors = ref({})
 const submitting = ref(false)
+const validationAttempted = ref(false)
 const submitted = ref(false)
 const selectedPackage = computed(() => site.packages.find((item) => item.id === form.value.package_id || item.slug === form.value.package_id))
 const packageService = computed(() => site.services.find((service) => service.id === selectedPackage.value?.service_id))
@@ -128,11 +130,11 @@ function changeEventType(eventTypeName) {
   }
 }
 
-function validate() {
+function getValidationErrors() {
   const result = {}
-  if (form.value.name.trim().length < 2) result.name = 'Nama minimal 2 karakter.'
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.email.trim())) result.email = 'Masukkan email yang valid.'
-  if (form.value.phone.replace(/\D/g, '').length < 9) result.phone = 'Masukkan nomor WhatsApp yang valid.'
+  if (form.value.name.trim().length < 2 || form.value.name.trim().length > 120) result.name = 'Nama harus berisi 2–120 karakter.'
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.email.trim()) || form.value.email.trim().length > 254) result.email = 'Masukkan alamat email yang valid.'
+  if (!/^08\d{8,11}$/.test(toLocalIndonesianPhone(form.value.phone))) result.phone = 'Masukkan nomor WhatsApp Indonesia yang diawali 08.'
   if (form.value.booking_type === 'organization' && form.value.organization_name.trim().length < 2) result.organization_name = 'Masukkan nama instansi atau sekolah.'
   if (form.value.booking_type === 'organization' && !form.value.organization_type) result.organization_type = 'Pilih jenis instansi.'
   if (!form.value.event_type) result.event_type = 'Pilih jenis acara.'
@@ -147,9 +149,30 @@ function validate() {
   if (form.value.budget_min && (!Number.isFinite(Number(form.value.budget_min)) || Number(form.value.budget_min) < 0)) result.budget_min = 'Anggaran minimum harus angka nol atau lebih.'
   if (form.value.budget_max && (!Number.isFinite(Number(form.value.budget_max)) || Number(form.value.budget_max) < 0)) result.budget_max = 'Anggaran maksimum harus angka nol atau lebih.'
   if (form.value.budget_min && form.value.budget_max && Number(form.value.budget_max) < Number(form.value.budget_min)) result.budget_max = 'Batas maksimum harus lebih besar dari minimum.'
-  if (form.value.message.trim().length < 15) result.message = 'Jelaskan acara Anda minimal 15 karakter.'
+  if (form.value.event_theme.trim().length > 160) result.event_theme = 'Tema acara maksimal 160 karakter.'
+  if (form.value.event_city.trim().length > 120) result.event_city = 'Nama kota maksimal 120 karakter.'
+  if (form.value.event_location.trim().length > 500) result.event_location = 'Lokasi acara maksimal 500 karakter.'
+  if (form.value.message.trim().length < 15 || form.value.message.trim().length > 5000) result.message = 'Pesan harus berisi 15–5.000 karakter.'
+  if (form.value.special_requirements.trim().length > 2000) result.special_requirements = 'Kebutuhan khusus maksimal 2.000 karakter.'
+  return result
+}
+
+function validate() {
+  validationAttempted.value = true
+  const result = getValidationErrors()
   errors.value = result
   return Object.keys(result).length === 0
+}
+
+function validateField(field) {
+  const validationErrors = getValidationErrors()
+  if (validationErrors[field]) errors.value[field] = validationErrors[field]
+  else delete errors.value[field]
+}
+
+function normalizePhone() {
+  form.value.phone = toLocalIndonesianPhone(form.value.phone)
+  validateField('phone')
 }
 
 function changeAddon(addon, amount) {
@@ -164,7 +187,13 @@ function changeAddon(addon, amount) {
 }
 
 async function submitBooking() {
-  if (submitting.value || !validate()) return
+  if (submitting.value) return
+  normalizePhone()
+  if (!validate()) {
+    await nextTick()
+    document.querySelector('.booking-form [aria-invalid="true"]')?.focus()
+    return
+  }
   submitting.value = true
   const payload = {
     name: form.value.name.trim(),
@@ -219,22 +248,23 @@ async function submitBooking() {
   <section v-else class="section section-paper"><div class="container booking-layout">
     <form class="booking-form" novalidate @submit.prevent="submitBooking">
       <div class="booking-step-heading"><span>01</span><div><h2>Siapa yang sedang merayakan?</h2><p>Pilih tipe pemesan agar kami menyesuaikan kebutuhan acara.</p></div></div>
+      <div v-if="validationAttempted && Object.keys(errors).length" class="form-error-summary" role="alert"><strong>Booking belum dapat dikirim.</strong><span>{{ Object.keys(errors).length }} isian perlu diperiksa. Kami sudah menandai bagian yang perlu diperbaiki.</span></div>
       <div class="booking-type-switch"><button type="button" :class="{ selected: form.booking_type === 'organization' }" @click="changeBookingType('organization')"><span class="booking-type-icon">01</span><strong>Instansi / Sekolah</strong><small>Perpisahan, wisuda, yearbook, corporate</small></button><button type="button" :class="{ selected: form.booking_type === 'personal' }" @click="changeBookingType('personal')"><span class="booking-type-icon">02</span><strong>Personal</strong><small>Wedding, ulang tahun, perayaan keluarga</small></button></div>
       <div class="booking-form-grid">
-        <label class="field"><span>{{ form.booking_type === 'organization' ? 'Nama PIC / penanggung jawab *' : 'Nama lengkap *' }}</span><input v-model="form.name" autocomplete="name" placeholder="Nama Anda"><small v-if="errors.name" class="field-error">{{ errors.name }}</small></label>
-        <label class="field"><span>Email aktif *</span><input v-model="form.email" type="email" autocomplete="email" placeholder="nama@email.com"><small v-if="errors.email" class="field-error">{{ errors.email }}</small></label>
-        <label class="field"><span>Nomor WhatsApp *</span><input v-model="form.phone" type="tel" autocomplete="tel" placeholder="+62 812 3456 7890"><small v-if="errors.phone" class="field-error">{{ errors.phone }}</small></label>
-        <label v-if="form.booking_type === 'organization'" class="field"><span>Nama instansi / sekolah *</span><input v-model="form.organization_name" placeholder="Contoh: SMA Cakrawala"><small v-if="errors.organization_name" class="field-error">{{ errors.organization_name }}</small></label>
-        <label v-if="form.booking_type === 'organization'" class="field"><span>Jenis instansi *</span><select v-model="form.organization_type"><option value="">Pilih jenis instansi</option><option>Sekolah / universitas</option><option>Perusahaan / korporasi</option><option>Komunitas / organisasi</option><option>Pemerintahan</option><option>Lainnya</option></select><small v-if="errors.organization_type" class="field-error">{{ errors.organization_type }}</small></label>
+        <label class="field"><span>{{ form.booking_type === 'organization' ? 'Nama PIC / penanggung jawab *' : 'Nama lengkap *' }}</span><input v-model="form.name" name="name" autocomplete="name" maxlength="120" placeholder="Nama Anda" :aria-invalid="Boolean(errors.name)" aria-describedby="booking-name-error" @blur="validateField('name')"><small v-if="errors.name" id="booking-name-error" class="field-error" role="alert">{{ errors.name }}</small></label>
+        <label class="field"><span>Email aktif *</span><input v-model="form.email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="nama@email.com" :aria-invalid="Boolean(errors.email)" aria-describedby="booking-email-error" @blur="validateField('email')"><small v-if="errors.email" id="booking-email-error" class="field-error" role="alert">{{ errors.email }}</small></label>
+        <label class="field"><span>Nomor WhatsApp *</span><input v-model="form.phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="18" placeholder="0812 3456 78910" :aria-invalid="Boolean(errors.phone)" aria-describedby="booking-phone-error" @blur="normalizePhone"><small v-if="errors.phone" id="booking-phone-error" class="field-error" role="alert">{{ errors.phone }}</small></label>
+        <label v-if="form.booking_type === 'organization'" class="field"><span>Nama instansi / sekolah *</span><input v-model="form.organization_name" name="organization_name" maxlength="160" placeholder="Contoh: SMA Cakrawala" :aria-invalid="Boolean(errors.organization_name)" aria-describedby="booking-organization-error" @blur="validateField('organization_name')"><small v-if="errors.organization_name" id="booking-organization-error" class="field-error" role="alert">{{ errors.organization_name }}</small></label>
+        <label v-if="form.booking_type === 'organization'" class="field"><span>Jenis instansi *</span><select v-model="form.organization_type" name="organization_type" :aria-invalid="Boolean(errors.organization_type)" aria-describedby="booking-organization-type-error" @blur="validateField('organization_type')"><option value="">Pilih jenis instansi</option><option>Sekolah / universitas</option><option>Perusahaan / korporasi</option><option>Komunitas / organisasi</option><option>Pemerintahan</option><option>Lainnya</option></select><small v-if="errors.organization_type" id="booking-organization-type-error" class="field-error" role="alert">{{ errors.organization_type }}</small></label>
         <label v-if="form.booking_type === 'organization'" class="field"><span>Jabatan PIC</span><input v-model="form.contact_position" placeholder="Contoh: Wakil Kepala Sekolah"></label>
       </div>
 
       <div class="booking-step-heading booking-step-divider"><span>02</span><div><h2>Pilih layanan dan paket</h2><p>Anda dapat meminta rekomendasi jika belum menentukan paket.</p></div></div>
       <div class="booking-form-grid">
-        <label class="field"><span>Jenis acara *</span><select :value="form.event_type" @change="changeEventType($event.target.value)"><option value="">Pilih jenis acara</option><option v-for="eventType in availableEventTypes" :key="eventType.id" :value="eventType.name">{{ eventType.name }}</option></select><small v-if="errors.event_type" class="field-error">{{ errors.event_type }}</small></label>
-        <label class="field"><span>Layanan yang dibutuhkan *</span><select :value="form.service_id" :disabled="!selectedEventType" @change="changeService($event.target.value)"><option value="">{{ selectedEventType ? 'Pilih layanan' : 'Pilih jenis acara terlebih dahulu' }}</option><option v-for="service in availableServices" :key="service.id" :value="service.id">{{ service.title }}</option></select><small v-if="errors.service_id" class="field-error">{{ errors.service_id }}</small></label>
-        <label class="field"><span>Paket pilihan</span><select :value="form.package_id" :disabled="!selectedEventType" @change="choosePackage(availablePackages.find((item) => item.id === $event.target.value) || { id: '', service_id: form.service_id })"><option value="">{{ selectedEventType ? 'Minta rekomendasi paket' : 'Pilih jenis acara terlebih dahulu' }}</option><option v-for="item in availablePackages" :key="item.id" :value="item.id">{{ item.name }} — {{ formatPrice(item.price) }}</option></select><small v-if="errors.package_id" class="field-error">{{ errors.package_id }}</small></label>
-        <label class="field"><span>Tema atau konsep acara</span><input v-model="form.event_theme" placeholder="Contoh: garden party, formal, tropical"></label>
+        <label class="field"><span>Jenis acara *</span><select name="event_type" :value="form.event_type" :aria-invalid="Boolean(errors.event_type)" aria-describedby="booking-event-type-error" @change="changeEventType($event.target.value); validateField('event_type')" @blur="validateField('event_type')"><option value="">Pilih jenis acara</option><option v-for="eventType in availableEventTypes" :key="eventType.id" :value="eventType.name">{{ eventType.name }}</option></select><small v-if="errors.event_type" id="booking-event-type-error" class="field-error" role="alert">{{ errors.event_type }}</small></label>
+        <label class="field"><span>Layanan yang dibutuhkan *</span><select name="service_id" :value="form.service_id" :disabled="!selectedEventType" :aria-invalid="Boolean(errors.service_id)" aria-describedby="booking-service-error" @change="changeService($event.target.value); validateField('service_id')" @blur="validateField('service_id')"><option value="">{{ selectedEventType ? 'Pilih layanan' : 'Pilih jenis acara terlebih dahulu' }}</option><option v-for="service in availableServices" :key="service.id" :value="service.id">{{ service.title }}</option></select><small v-if="errors.service_id" id="booking-service-error" class="field-error" role="alert">{{ errors.service_id }}</small></label>
+        <label class="field"><span>Paket pilihan</span><select name="package_id" :value="form.package_id" :disabled="!selectedEventType" :aria-invalid="Boolean(errors.package_id)" aria-describedby="booking-package-error" @change="choosePackage(availablePackages.find((item) => item.id === $event.target.value) || { id: '', service_id: form.service_id }); validateField('package_id')" @blur="validateField('package_id')"><option value="">{{ selectedEventType ? 'Minta rekomendasi paket' : 'Pilih jenis acara terlebih dahulu' }}</option><option v-for="item in availablePackages" :key="item.id" :value="item.id">{{ item.name }} — {{ formatPrice(item.price) }}</option></select><small v-if="errors.package_id" id="booking-package-error" class="field-error" role="alert">{{ errors.package_id }}</small></label>
+        <label class="field"><span>Tema atau konsep acara</span><input v-model="form.event_theme" name="event_theme" maxlength="160" placeholder="Contoh: garden party, formal, tropical" :aria-invalid="Boolean(errors.event_theme)" aria-describedby="booking-theme-error" @blur="validateField('event_theme')"><small v-if="errors.event_theme" id="booking-theme-error" class="field-error" role="alert">{{ errors.event_theme }}</small></label>
       </div>
 
       <div v-if="selectedPackage && availableAddons.length" class="booking-addons">
@@ -245,21 +275,21 @@ async function submitBooking() {
 
       <div class="booking-step-heading booking-step-divider"><span>03</span><div><h2>Detail waktu dan lokasi</h2><p>Informasi ini membantu kami memeriksa kebutuhan produksi dan ketersediaan.</p></div></div>
       <div class="booking-form-grid">
-        <label class="field"><span>Tanggal acara *</span><input v-model="form.event_date" type="date" :min="minimumDate"><small v-if="errors.event_date" class="field-error">{{ errors.event_date }}</small></label>
-        <label class="field"><span>Jumlah tamu / peserta *</span><input v-model.number="form.guest_count" type="number" min="1" placeholder="Contoh: 250"><small v-if="errors.guest_count" class="field-error">{{ errors.guest_count }}</small></label>
+        <label class="field"><span>Tanggal acara *</span><input v-model="form.event_date" name="event_date" type="date" :min="minimumDate" :aria-invalid="Boolean(errors.event_date)" aria-describedby="booking-date-error" @blur="validateField('event_date')"><small v-if="errors.event_date" id="booking-date-error" class="field-error" role="alert">{{ errors.event_date }}</small></label>
+        <label class="field"><span>Jumlah tamu / peserta *</span><input v-model.number="form.guest_count" name="guest_count" type="number" min="1" max="100000" step="1" inputmode="numeric" placeholder="Contoh: 250" :aria-invalid="Boolean(errors.guest_count)" aria-describedby="booking-guests-error" @blur="validateField('guest_count')"><small v-if="errors.guest_count" id="booking-guests-error" class="field-error" role="alert">{{ errors.guest_count }}</small></label>
         <label class="field"><span>Waktu mulai</span><input v-model="form.event_start_time" type="time"></label>
-        <label class="field"><span>Waktu selesai</span><input v-model="form.event_end_time" type="time"><small v-if="errors.event_end_time" class="field-error">{{ errors.event_end_time }}</small></label>
-        <label class="field"><span>Kota acara *</span><input v-model="form.event_city" placeholder="Contoh: Jakarta Selatan"><small v-if="errors.event_city" class="field-error">{{ errors.event_city }}</small></label>
+        <label class="field"><span>Waktu selesai</span><input v-model="form.event_end_time" name="event_end_time" type="time" :aria-invalid="Boolean(errors.event_end_time)" aria-describedby="booking-end-time-error" @blur="validateField('event_end_time')"><small v-if="errors.event_end_time" id="booking-end-time-error" class="field-error" role="alert">{{ errors.event_end_time }}</small></label>
+        <label class="field"><span>Kota acara *</span><input v-model="form.event_city" name="event_city" maxlength="120" autocomplete="address-level2" placeholder="Contoh: Jakarta Selatan" :aria-invalid="Boolean(errors.event_city)" aria-describedby="booking-city-error" @blur="validateField('event_city')"><small v-if="errors.event_city" id="booking-city-error" class="field-error" role="alert">{{ errors.event_city }}</small></label>
         <label class="field"><span>Jenis venue</span><select v-model="form.venue_type"><option value="">Belum ditentukan</option><option>Ballroom / hotel</option><option>Gedung / aula sekolah</option><option>Outdoor / taman</option><option>Kantor / convention center</option><option>Rumah / private venue</option><option>Venue belum dipilih</option><option>Lainnya</option></select></label>
-        <label class="field field-wide"><span>Nama venue dan alamat (jika sudah ada)</span><input v-model="form.event_location" placeholder="Nama venue, alamat lengkap, atau tautan lokasi"></label>
+        <label class="field field-wide"><span>Nama venue dan alamat (jika sudah ada)</span><input v-model="form.event_location" name="event_location" maxlength="500" autocomplete="street-address" placeholder="Nama venue, alamat lengkap, atau tautan lokasi" :aria-invalid="Boolean(errors.event_location)" aria-describedby="booking-location-error" @blur="validateField('event_location')"><small v-if="errors.event_location" id="booking-location-error" class="field-error" role="alert">{{ errors.event_location }}</small></label>
       </div>
 
       <div class="booking-step-heading booking-step-divider"><span>04</span><div><h2>Anggaran dan kebutuhan khusus</h2><p>Opsional — membantu kami menyusun rekomendasi yang realistis.</p></div></div>
       <div class="booking-form-grid">
-        <label class="field"><span>Anggaran minimum (Rp)</span><CurrencyInput v-model="form.budget_min" aria-label="Anggaran minimum dalam rupiah" placeholder="Contoh: 1.000.000" nullable /><small v-if="errors.budget_min" class="field-error">{{ errors.budget_min }}</small></label>
-        <label class="field"><span>Anggaran maksimum (Rp)</span><CurrencyInput v-model="form.budget_max" aria-label="Anggaran maksimum dalam rupiah" placeholder="Contoh: 10.000.000" nullable /><small v-if="errors.budget_max" class="field-error">{{ errors.budget_max }}</small></label>
-        <label class="field field-wide"><span>Kebutuhan khusus atau perlengkapan</span><textarea v-model="form.special_requirements" rows="3" placeholder="Contoh: akses kursi roda, kebutuhan listrik, panggung tambahan, konsumsi khusus..."></textarea></label>
-        <label class="field field-wide"><span>Ceritakan rencana acara Anda *</span><textarea v-model="form.message" rows="4" placeholder="Tujuan acara, susunan kegiatan, hal yang paling penting untuk Anda, atau kebutuhan lain..." /><small v-if="errors.message" class="field-error">{{ errors.message }}</small></label>
+        <label class="field"><span>Anggaran minimum (Rp)</span><CurrencyInput v-model="form.budget_min" aria-label="Anggaran minimum dalam rupiah" placeholder="Contoh: 1.000.000" nullable :aria-invalid="Boolean(errors.budget_min)" @blur="validateField('budget_min')" /><small v-if="errors.budget_min" class="field-error" role="alert">{{ errors.budget_min }}</small></label>
+        <label class="field"><span>Anggaran maksimum (Rp)</span><CurrencyInput v-model="form.budget_max" aria-label="Anggaran maksimum dalam rupiah" placeholder="Contoh: 10.000.000" nullable :aria-invalid="Boolean(errors.budget_max)" @blur="validateField('budget_max')" /><small v-if="errors.budget_max" class="field-error" role="alert">{{ errors.budget_max }}</small></label>
+        <label class="field field-wide"><span>Kebutuhan khusus atau perlengkapan</span><textarea v-model="form.special_requirements" name="special_requirements" maxlength="2000" rows="3" placeholder="Contoh: akses kursi roda, kebutuhan listrik, panggung tambahan, konsumsi khusus..." :aria-invalid="Boolean(errors.special_requirements)" aria-describedby="booking-requirements-error" @blur="validateField('special_requirements')"></textarea><small v-if="errors.special_requirements" id="booking-requirements-error" class="field-error" role="alert">{{ errors.special_requirements }}</small></label>
+        <label class="field field-wide"><span>Ceritakan rencana acara Anda *</span><textarea v-model="form.message" name="message" minlength="15" maxlength="5000" rows="4" placeholder="Tujuan acara, susunan kegiatan, hal yang paling penting untuk Anda, atau kebutuhan lain..." :aria-invalid="Boolean(errors.message)" aria-describedby="booking-message-help booking-message-error" @blur="validateField('message')" /><small id="booking-message-help" class="field-help">Minimal 15 karakter agar tim kami memahami kebutuhan acara.</small><small v-if="errors.message" id="booking-message-error" class="field-error" role="alert">{{ errors.message }}</small></label>
       </div>
       <div class="booking-submit-row"><p>Permintaan ini belum mengunci tanggal atau menimbulkan biaya. Tim kami akan mengonfirmasi ketersediaan dan penawaran terlebih dahulu.</p><button class="button button-dark" type="submit" :disabled="submitting">{{ submitting ? 'Mengirim permintaan...' : 'Kirim permintaan booking' }} <ArrowRight :size="16" /></button></div>
     </form>

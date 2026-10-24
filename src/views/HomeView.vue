@@ -1,12 +1,13 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { ArrowDown, ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown, Sparkles, Star } from '@lucide/vue'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown, Sparkles, Star } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import { useSiteStore } from '../stores/site'
 import { categoryName, formatPrice, localImages } from '../data/demo'
 
 const site = useSiteStore()
 const openFaq = ref(0)
+const clientTrack = ref(null)
 const builtInSectionKeys = new Set(['hero', 'services', 'packages', 'portfolio', 'about', 'testimonials', 'clients', 'faq', 'cta'])
 const visible = (key) => site.sections.find((section) => section.section_key === key)?.is_enabled !== false
 const section = (key) => site.sections.find((item) => item.section_key === key)
@@ -29,6 +30,17 @@ const featuredPackages = computed(() => site.packages
   })
   .slice(0, 3))
 const featuredWork = computed(() => site.portfolios.slice(0, 3))
+const scrollClients = (direction) => {
+  const track = clientTrack.value
+  if (!track) return
+  const card = track.querySelector('.client-logo-card')
+  const gap = Number.parseFloat(getComputedStyle(track).columnGap) || 14
+  const distance = card ? (card.getBoundingClientRect().width + gap) * 2 : track.clientWidth * .8
+  track.scrollBy({
+    left: distance * direction,
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+  })
+}
 </script>
 
 <template>
@@ -88,7 +100,10 @@ const featuredWork = computed(() => site.portfolios.slice(0, 3))
       <div class="testimonial-grid"><article v-for="item in site.testimonials.slice(0, 3)" :key="item.id" class="testimonial-card"><div class="stars"><Star v-for="star in (item.rating || 5)" :key="star" :size="14" fill="currentColor" /></div><blockquote>“{{ item.quote }}”</blockquote><div class="testimonial-author"><img v-if="item.avatar_url" class="testimonial-avatar" :src="item.avatar_url" :alt="`Foto profil ${item.name}`" loading="lazy"><span v-else class="avatar">{{ item.name?.charAt(0) }}</span><div><strong>{{ item.name }}</strong><small>{{ item.role }}</small></div></div></article></div>
     </div></section>
 
-    <section v-if="visible('clients')" class="section section-paper clients-section" :style="{ order: orderFor('clients', 7) }"><div class="container"><span class="eyebrow">{{ section('clients')?.title || 'MEREKA YANG TELAH BERSAMA KAMI' }}</span><div class="client-row"><div v-for="client in site.clients" :key="client.id" class="client-logo-card"><img v-if="client.logo_url" :src="client.logo_url" :alt="`Logo ${client.name}`" loading="lazy"><span class="client-logo-name">{{ client.name }}</span></div></div></div></section>
+    <section v-if="visible('clients')" class="section section-paper clients-section" :style="{ order: orderFor('clients', 7) }"><div class="container">
+      <div class="clients-heading"><span class="eyebrow">{{ section('clients')?.title || 'MEREKA YANG TELAH BERSAMA KAMI' }}</span><div v-if="site.clients.length > 1" class="clients-controls"><span>{{ site.clients.length }} partner</span><button type="button" aria-label="Geser partner ke kiri" @click="scrollClients(-1)"><ArrowLeft :size="17" /></button><button type="button" aria-label="Geser partner ke kanan" @click="scrollClients(1)"><ArrowRight :size="17" /></button></div></div>
+      <div ref="clientTrack" class="client-row" role="region" aria-label="Carousel klien dan partner" tabindex="0"><div v-for="client in site.clients" :key="client.id" class="client-logo-card"><img v-if="client.logo_url" :src="client.logo_url" :alt="`Logo ${client.name}`" loading="lazy"><span class="client-logo-name">{{ client.name }}</span></div></div>
+    </div></section>
 
     <section v-if="visible('faq')" class="section section-cream" :style="{ order: orderFor('faq', 8) }"><div class="container faq-layout"><div class="faq-intro"><span class="eyebrow">FAQ</span><h2>{{ section('faq')?.title || 'Pertanyaan yang sering muncul.' }}</h2><p>Belum menemukan jawaban? Kami dengan senang hati membantu.</p><RouterLink class="text-link" to="/kontak">Tanyakan pada kami <ArrowRight :size="16" /></RouterLink></div><div class="faq-list"><article v-for="(faq, index) in site.faqs" :key="faq.id" class="faq-item" :class="{ expanded: openFaq === index }"><button type="button" @click="openFaq = openFaq === index ? -1 : index"><span>{{ faq.question }}</span><ChevronDown :size="17" /></button><p v-if="openFaq === index">{{ faq.answer }}</p></article></div></div></section>
 

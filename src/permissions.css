@@ -6,4 +6,6 @@
 .booking-admin-addon{display:block;margin-bottom:7px;font-size:9px}
 .booking-admin-addon small{display:block;color:#858178;margin-top:3px}
 .booking-admin-table .inquiry-message{margin-top:7px}
+.date-filter{display:flex;align-items:center;gap:8px;color:#77736b;font-size:9px;white-space:nowrap}
+.date-filter .select-control{min-width:94px}
 @media(max-width:700px){.booking-admin-table{min-width:980px}}
